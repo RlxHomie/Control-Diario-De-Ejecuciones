@@ -452,7 +452,7 @@
         const msalConfig = {
     auth: {
         clientId: "7ef87bab-74a8-4060-83ed-870ec4bccfef",
-        authority: "https://login.microsoftonline.com/a70783e2-cf58-4e38-bfd7-b403c7c833af", // CORREGIDO
+        authority: "https://login.microsoftonline.com/a70783e2-cf58-4e38-bfd7-b403c7c833af",
         redirectUri: "https://rlxhomie.github.io/Control-Diario-De-Ejecuciones/"
     },
             cache: {
@@ -656,7 +656,7 @@
             
             // Logout
             document.getElementById('logoutButton').addEventListener('click', logout);
-            document.getElementById('loginButton').addEventListener('click', login);
+            
         }
 
         // Show section
@@ -1201,8 +1201,23 @@
             }
         }
 
-        // Initialize application
+                // Initialize application
         initializeMSAL();
+        
+        // Configurar el botón de login inmediatamente
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginButton = document.getElementById('loginButton');
+            if (loginButton) {
+                console.log('Botón de login encontrado y configurado');
+                loginButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('Intentando login...');
+                    login();
+                });
+            } else {
+                console.error('ERROR: No se encontró el botón de login');
+            }
+        });
         
         // For demo purposes, allow testing without authentication
         if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -1216,4 +1231,5 @@
 </body>
 
 </html>
+
 
