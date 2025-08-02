@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión de Bonificaciones</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Toastify CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --light-bg: #ecf0f1;
+            --dark-text: #2c3e50;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--light-bg);
+            color: var(--dark-text);
+        }
+
+        .navbar {
+            background-color: var(--primary-color) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.3rem;
+        }
+
+        .main-container {
+            margin-top: 80px;
+            padding: 20px;
+        }
+
+        .card {
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,.1);
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background-color: var(--secondary-color);
+            color: white;
+            font-weight: bold;
+            border-radius: 10px 10px 0 0 !important;
+        }
+
+        .btn-primary {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }
+
+        .points-badge {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--success-color);
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 2rem;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.2);
+        }
+
+        .filter-section {
+            background-color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,.05);
+        }
+
+        .stats-card {
+            background: linear-gradient(135deg, var(--secondary-color) 0%, #5dade2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .loading-spinner {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+        }
+
+        .loading-spinner.show {
+            display: block;
+        }
+
+        .error-message {
+            color: var(--danger-color);
+            font-size: 0.875rem;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 10px;
+            }
+            
+            .table {
+                font-size: 0.875rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Spinner -->
+    <div class="loading-spinner">
+        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-container">
+        <div class="login-card">
+            <div class="text-center mb-4">
+                <i class="fas fa-balance-scale fa-3x text-primary mb-3"></i>
+                <h2>Sistema de Bonificaciones</h2>
+                <p class="text-muted">Departamento Legal</p>
+            </div>
+            <button id="loginButton" class="btn btn-primary btn-lg w-100">
+                <i class="fab fa-microsoft me-2"></i>
+                Iniciar sesión con Microsoft
+            </button>
+            <p class="text-center text-muted mt-3 mb-0">
+                <small>Utiliza tu cuenta corporativa de Microsoft</small>
+            </p>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" style="display: none;">
+        <!-- Navigation -->
+        <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#">
+                    <i class="fas fa-balance-scale me-2"></i>
+                    Sistema de Bonificaciones
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="dashboard">
+                                <i class="fas fa-home me-1"></i> Inicio
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="register">
+                                <i class="fas fa-plus-circle me-1"></i> Registrar
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="history">
+                                <i class="fas fa-history me-1"></i> Historial
+                            </a>
+                        </li>
+                        <li class="nav-item admin-only" style="display: none;">
+                            <a class="nav-link" href="#" data-section="admin">
+                                <i class="fas fa-users-cog me-1"></i> Administración
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" id="logoutButton">
+                                <i class="fas fa-sign-out-alt me-1"></i> Salir
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Container -->
+        <div class="main-container container">
+            <!-- Dashboard Section -->
+            <section id="dashboardSection" class="content-section">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="stats-card">
+                            <i class="fas fa-star fa-3x mb-3"></i>
+                            <h3>Puntos Totales</h3>
+                            <div class="points-badge" id="totalPoints">0</div>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-chart-line me-2"></i>
+                                Evolución de Puntos por Mes
+                            </div>
+                            <div class="card-body">
+                                <canvas id="pointsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-clock me-2"></i>
+                                Últimas Entradas
+                            </div>
+                            <div class="card-body">
+                                <div id="recentEntries"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Register Section -->
+            <section id="registerSection" class="content-section" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-plus-circle me-2"></i>
+                        Registrar Nueva Entrada
+                    </div>
+                    <div class="card-body">
+                        <form id="registerForm">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="fecha" class="form-label">Fecha</label>
+                                    <input type="date" class="form-control" id="fecha" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="expediente" class="form-label">Número de Expediente</label>
+                                    <input type="text" class="form-control" id="expediente" 
+                                           placeholder="Ej: EXP-2024-001" required>
+                                    <div class="error-message" id="expedienteError"></div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="tipoEscrito" class="form-label">Tipo de Escrito</label>
+                                    <select class="form-select" id="tipoEscrito" required>
+                                        <option value="">Seleccione un tipo...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="alert alert-info" role="alert">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Puntos del escrito seleccionado:</strong> 
+                                        <span id="puntosPreview">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>
+                                Guardar Entrada
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- History Section -->
+            <section id="historySection" class="content-section" style="display: none;">
+                <div class="filter-section">
+                    <h5><i class="fas fa-filter me-2"></i>Filtros</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">Fecha desde</label>
+                            <input type="date" class="form-control" id="filterDateFrom">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Fecha hasta</label>
+                            <input type="date" class="form-control" id="filterDateTo">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo de Escrito</label>
+                            <select class="form-select" id="filterType">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary mt-3" id="applyFilters">
+                        <i class="fas fa-search me-2"></i>Aplicar Filtros
+                    </button>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-history me-2"></i>
+                        Historial de Entradas
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="historyTable">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Expediente</th>
+                                        <th>Tipo de Escrito</th>
+                                        <th>Puntos</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Admin Section -->
+            <section id="adminSection" class="content-section" style="display: none;">
+                <div class="row">
+                    <div class="col-12 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-users me-2"></i>
+                                Resumen de Puntos por Usuario
+                            </div>
+                            <div class="card-body">
+                                <div id="usersSummary"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span>
+                                    <i class="fas fa-list me-2"></i>
+                                    Todas las Entradas
+                                </span>
+                                <div>
+                                    <button class="btn btn-success btn-sm" id="exportCSV">
+                                        <i class="fas fa-file-csv me-1"></i> Exportar CSV
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" id="exportPDF">
+                                        <i class="fas fa-file-pdf me-1"></i> Exportar PDF
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover" id="adminTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Usuario</th>
+                                                <th>Fecha</th>
+                                                <th>Expediente</th>
+                                                <th>Tipo de Escrito</th>
+                                                <th>Puntos</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="adminTableBody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar Entrada</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editForm">
+                        <input type="hidden" id="editId">
+                        <div class="mb-3">
+                            <label class="form-label">Fecha</label>
+                            <input type="date" class="form-control" id="editFecha" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Expediente</label>
+                            <input type="text" class="form-control" id="editExpediente" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Tipo de Escrito</label>
+                            <select class="form-select" id="editTipoEscrito" required>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="saveEdit">Guardar Cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <script>
+        // Configuration
+        const msalConfig = {
+            auth: {
+                clientId: "YOUR_CLIENT_ID", // Replace with your Azure AD app client ID
+                authority: "https://login.microsoftonline.com/YOUR_TENANT_ID", // Replace with your tenant ID
+                redirectUri: window.location.origin
+            },
+            cache: {
+                cacheLocation: "sessionStorage",
+                storeAuthStateInCookie: false
+            }
+        };
+
+        const loginRequest = {
+            scopes: ["User.Read", "Files.ReadWrite"]
+        };
+
+        // Types of legal documents with points
+        const tiposEscritos = {
+            "Solicitud tasación de costas / Incidente / Aclarar minuta": 2,
+            "Solicitud de cumplimiento": 0.25,
+            "Impugnación de costas": 1.5,
+            "Oposición impugnación de costas": 2,
+            "Recurso de revisión": 2,
+            "Oposición recurso de revisión": 2,
+            "Recurso de reposición": 1.25,
+            "Cesión de costas": 0.5,
+            "Liquidación de intereses": 1,
+            "Solicitud mandamiento pago": 0.25,
+            "Impulsos procesales": 0.25,
+            "Aclarar/presentar cuenta bancaria": 0.5,
+            "Demanda JV reclamación de cantidad": 2,
+            "Demanda Cesión Crédito": 2,
+            "Demanda ETJ": 1.25,
+            "Oposición ETJ": 1.25,
+            "Escrito de conformidad": 0.5,
+            "Alegaciones envío Colegio": 0.5,
+            "Solicitud TC ETJ": 1.5,
+            "Análisis cuadro amortización": 0.5,
+            "Desgloses": 0.5,
+            "Control procesal": 0.25
+        };
+
+        // Global variables
+        let msalInstance;
+        let currentUser = null;
+        let entries = [];
+        let users = [];
+        let pointsChart = null;
+        let accessToken = null;
+
+        // Initialize MSAL
+        function initializeMSAL() {
+            msalInstance = new msal.PublicClientApplication(msalConfig);
+            
+            msalInstance.handleRedirectPromise()
+                .then(handleResponse)
+                .catch(err => {
+                    console.error(err);
+                    showNotification('Error al iniciar sesión', 'error');
+                });
+        }
+
+        // Handle authentication response
+        function handleResponse(response) {
+            if (response !== null) {
+                currentUser = response.account;
+                accessToken = response.accessToken;
+                showMainApp();
+            } else {
+                const accounts = msalInstance.getAllAccounts();
+                if (accounts.length > 0) {
+                    currentUser = accounts[0];
+                    getTokenSilently();
+                }
+            }
+        }
+
+        // Get token silently
+        async function getTokenSilently() {
+            const tokenRequest = {
+                scopes: loginRequest.scopes,
+                account: currentUser
+            };
+
+            try {
+                const response = await msalInstance.acquireTokenSilent(tokenRequest);
+                accessToken = response.accessToken;
+                showMainApp();
+            } catch (error) {
+                if (error instanceof msal.InteractionRequiredAuthError) {
+                    msalInstance.acquireTokenRedirect(tokenRequest);
+                }
+            }
+        }
+
+        // Login function
+        async function login() {
+            try {
+                showLoading(true);
+                await msalInstance.loginRedirect(loginRequest);
+            } catch (error) {
+                console.error(error);
+                showNotification('Error al iniciar sesión', 'error');
+                showLoading(false);
+            }
+        }
+
+        // Logout function
+        function logout() {
+            const logoutRequest = {
+                account: currentUser,
+                postLogoutRedirectUri: window.location.origin
+            };
+            msalInstance.logoutRedirect(logoutRequest);
+        }
+
+        // Show main application
+        async function showMainApp() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            
+            // Load user data and initialize app
+            await loadUserData();
+            initializeApp();
+        }
+
+        // Load user data from Excel
+        async function loadUserData() {
+            try {
+                showLoading(true);
+                // Here you would make API calls to Microsoft Graph to load data from Excel
+                // For demo purposes, we'll use local storage
+                loadFromLocalStorage();
+                showLoading(false);
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                showNotification('Error al cargar datos', 'error');
+                showLoading(false);
+            }
+        }
+
+        // Initialize application
+        function initializeApp() {
+            // Set current date
+            document.getElementById('fecha').value = new Date().toISOString().split('T')[0];
+            
+            // Populate select options
+            populateSelects();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Check if user is admin
+            checkAdminRole();
+            
+            // Load dashboard
+            loadDashboard();
+            
+            // Initialize chart
+            initializeChart();
+        }
+
+        // Populate select dropdowns
+        function populateSelects() {
+            const tipoEscritoSelect = document.getElementById('tipoEscrito');
+            const editTipoEscritoSelect = document.getElementById('editTipoEscrito');
+            const filterTypeSelect = document.getElementById('filterType');
+            
+            // Clear existing options
+            tipoEscritoSelect.innerHTML = '<option value="">Seleccione un tipo...</option>';
+            editTipoEscritoSelect.innerHTML = '<option value="">Seleccione un tipo...</option>';
+            filterTypeSelect.innerHTML = '<option value="">Todos</option>';
+            
+            // Add options
+            Object.keys(tiposEscritos).forEach(tipo => {
+                const option = new Option(tipo, tipo);
+                tipoEscritoSelect.add(option.cloneNode(true));
+                editTipoEscritoSelect.add(option.cloneNode(true));
+                filterTypeSelect.add(option.cloneNode(true));
+            });
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Navigation
+            document.querySelectorAll('.nav-link[data-section]').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showSection(e.target.closest('.nav-link').dataset.section);
+                });
+            });
+            
+            // Forms
+            document.getElementById('registerForm').addEventListener('submit', handleRegister);
+            document.getElementById('tipoEscrito').addEventListener('change', updatePointsPreview);
+            document.getElementById('expediente').addEventListener('input', validateExpediente);
+            
+            // Filters
+            document.getElementById('applyFilters').addEventListener('click', applyFilters);
+            
+            // Admin actions
+            document.getElementById('exportCSV').addEventListener('click', exportToCSV);
+            document.getElementById('exportPDF').addEventListener('click', exportToPDF);
+            document.getElementById('saveEdit').addEventListener('click', saveEdit);
+            
+            // Logout
+            document.getElementById('logoutButton').addEventListener('click', logout);
+            document.getElementById('loginButton').addEventListener('click', login);
+        }
+
+        // Show section
+        function showSection(section) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(sec => {
+                sec.style.display = 'none';
+            });
+            
+            // Show selected section
+            document.getElementById(section + 'Section').style.display = 'block';
+            
+            // Update active nav
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            document.querySelector(`[data-section="${section}"]`).classList.add('active');
+            
+            // Load section data
+            switch(section) {
+                case 'dashboard':
+                    loadDashboard();
+                    break;
+                case 'history':
+                    loadHistory();
+                    break;
+                case 'admin':
+                    loadAdminPanel();
+                    break;
+            }
+        }
+
+        // Handle registration
+        async function handleRegister(e) {
+            e.preventDefault();
+            
+            const fecha = document.getElementById('fecha').value;
+            const expediente = document.getElementById('expediente').value.trim();
+            const tipoEscrito = document.getElementById('tipoEscrito').value;
+            
+            // Validate expediente is unique
+            if (entries.some(entry => entry.expediente === expediente)) {
+                document.getElementById('expedienteError').textContent = 'Este expediente ya existe';
+                return;
+            }
+            
+            const entry = {
+                id: Date.now().toString(),
+                usuario: currentUser.name,
+                usuarioId: currentUser.username,
+                fecha: fecha,
+                expediente: expediente,
+                tipoEscrito: tipoEscrito,
+                puntos: tiposEscritos[tipoEscrito]
+            };
+            
+            try {
+                showLoading(true);
+                // Here you would save to Excel via Microsoft Graph API
+                // For demo, we'll use local storage
+                entries.push(entry);
+                saveToLocalStorage();
+                
+                // Reset form
+                document.getElementById('registerForm').reset();
+                document.getElementById('fecha').value = new Date().toISOString().split('T')[0];
+                document.getElementById('puntosPreview').textContent = '-';
+                
+                showNotification('Entrada registrada exitosamente', 'success');
+                showLoading(false);
+                
+                // Refresh dashboard
+                loadDashboard();
+            } catch (error) {
+                console.error('Error registering entry:', error);
+                showNotification('Error al registrar entrada', 'error');
+                showLoading(false);
+            }
+        }
+
+        // Update points preview
+        function updatePointsPreview() {
+            const tipoEscrito = document.getElementById('tipoEscrito').value;
+            const preview = document.getElementById('puntosPreview');
+            
+            if (tipoEscrito && tiposEscritos[tipoEscrito]) {
+                preview.textContent = tiposEscritos[tipoEscrito] + ' puntos';
+            } else {
+                preview.textContent = '-';
+            }
+        }
+
+        // Validate expediente
+        function validateExpediente() {
+            const expediente = document.getElementById('expediente').value.trim();
+            const errorDiv = document.getElementById('expedienteError');
+            
+            if (entries.some(entry => entry.expediente === expediente)) {
+                errorDiv.textContent = 'Este expediente ya existe';
+            } else {
+                errorDiv.textContent = '';
+            }
+        }
+
+        // Load dashboard
+        function loadDashboard() {
+            const userEntries = entries.filter(e => e.usuarioId === currentUser.username);
+            const totalPoints = userEntries.reduce((sum, entry) => sum + entry.puntos, 0);
+            
+            document.getElementById('totalPoints').textContent = totalPoints.toFixed(2);
+            
+            // Recent entries
+            const recentEntries = userEntries.slice(-5).reverse();
+            const recentEntriesHtml = recentEntries.length > 0 ? 
+                recentEntries.map(entry => `
+                    <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                        <div>
+                            <strong>${entry.tipoEscrito}</strong><br>
+                            <small class="text-muted">${formatDate(entry.fecha)} - ${entry.expediente}</small>
+                        </div>
+                        <span class="badge bg-success">${entry.puntos} pts</span>
+                    </div>
+                `).join('') : 
+                '<p class="text-muted text-center">No hay entradas registradas</p>';
+            
+            document.getElementById('recentEntries').innerHTML = recentEntriesHtml;
+            
+            // Update chart
+            updateChart();
+        }
+
+        // Initialize chart
+        function initializeChart() {
+            const ctx = document.getElementById('pointsChart').getContext('2d');
+            pointsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Puntos por Mes',
+                        data: [],
+                        borderColor: 'rgb(52, 152, 219)',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update chart
+        function updateChart() {
+            const userEntries = entries.filter(e => e.usuarioId === currentUser.username);
+            const monthlyData = {};
+            
+            userEntries.forEach(entry => {
+                const month = entry.fecha.substring(0, 7); // YYYY-MM
+                monthlyData[month] = (monthlyData[month] || 0) + entry.puntos;
+            });
+            
+            const sortedMonths = Object.keys(monthlyData).sort();
+            const labels = sortedMonths.map(month => {
+                const [year, monthNum] = month.split('-');
+                return new Date(year, monthNum - 1).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' });
+            });
+            
+            pointsChart.data.labels = labels;
+            pointsChart.data.datasets[0].data = sortedMonths.map(month => monthlyData[month]);
+            pointsChart.update();
+        }
+
+        // Load history
+        function loadHistory() {
+            const userEntries = entries.filter(e => e.usuarioId === currentUser.username);
+            displayHistoryTable(userEntries);
+        }
+
+        // Display history table
+        function displayHistoryTable(entriesToDisplay) {
+            const tbody = document.getElementById('historyTableBody');
+            
+            if (entriesToDisplay.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay entradas para mostrar</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = entriesToDisplay.map(entry => `
+                <tr>
+                    <td>${formatDate(entry.fecha)}</td>
+                    <td>${entry.expediente}</td>
+                    <td>${entry.tipoEscrito}</td>
+                    <td><span class="badge bg-success">${entry.puntos}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editEntry('${entry.id}')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteEntry('${entry.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Apply filters
+        function applyFilters() {
+            const dateFrom = document.getElementById('filterDateFrom').value;
+            const dateTo = document.getElementById('filterDateTo').value;
+            const type = document.getElementById('filterType').value;
+            
+            let filtered = entries.filter(e => e.usuarioId === currentUser.username);
+            
+            if (dateFrom) {
+                filtered = filtered.filter(e => e.fecha >= dateFrom);
+            }
+            
+            if (dateTo) {
+                filtered = filtered.filter(e => e.fecha <= dateTo);
+            }
+            
+            if (type) {
+                filtered = filtered.filter(e => e.tipoEscrito === type);
+            }
+            
+            displayHistoryTable(filtered);
+        }
+
+        // Edit entry
+        function editEntry(id) {
+            const entry = entries.find(e => e.id === id);
+            if (!entry) return;
+            
+            document.getElementById('editId').value = entry.id;
+            document.getElementById('editFecha').value = entry.fecha;
+            document.getElementById('editExpediente').value = entry.expediente;
+            document.getElementById('editTipoEscrito').value = entry.tipoEscrito;
+            
+            const modal = new bootstrap.Modal(document.getElementById('editModal'));
+            modal.show();
+        }
+
+        // Save edit
+        async function saveEdit() {
+            const id = document.getElementById('editId').value;
+            const fecha = document.getElementById('editFecha').value;
+            const expediente = document.getElementById('editExpediente').value.trim();
+            const tipoEscrito = document.getElementById('editTipoEscrito').value;
+            
+            const entryIndex = entries.findIndex(e => e.id === id);
+            if (entryIndex === -1) return;
+            
+            // Check if expediente is unique (excluding current entry)
+            if (entries.some((e, i) => e.expediente === expediente && i !== entryIndex)) {
+                showNotification('Este expediente ya existe', 'error');
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                
+                entries[entryIndex] = {
+                    ...entries[entryIndex],
+                    fecha: fecha,
+                    expediente: expediente,
+                    tipoEscrito: tipoEscrito,
+                    puntos: tiposEscritos[tipoEscrito]
+                };
+                
+                saveToLocalStorage();
+                
+                bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                showNotification('Entrada actualizada exitosamente', 'success');
+                
+                // Refresh current view
+                if (document.getElementById('historySection').style.display !== 'none') {
+                    loadHistory();
+                } else if (document.getElementById('adminSection').style.display !== 'none') {
+                    loadAdminPanel();
+                }
+                
+                showLoading(false);
+            } catch (error) {
+                console.error('Error updating entry:', error);
+                showNotification('Error al actualizar entrada', 'error');
+                showLoading(false);
+            }
+        }
+
+        // Delete entry
+        async function deleteEntry(id) {
+            if (!confirm('¿Está seguro de eliminar esta entrada?')) return;
+            
+            try {
+                showLoading(true);
+                
+                entries = entries.filter(e => e.id !== id);
+                saveToLocalStorage();
+                
+                showNotification('Entrada eliminada exitosamente', 'success');
+                
+                // Refresh current view
+                if (document.getElementById('historySection').style.display !== 'none') {
+                    loadHistory();
+                } else if (document.getElementById('adminSection').style.display !== 'none') {
+                    loadAdminPanel();
+                } else {
+                    loadDashboard();
+                }
+                
+                showLoading(false);
+            } catch (error) {
+                console.error('Error deleting entry:', error);
+                showNotification('Error al eliminar entrada', 'error');
+                showLoading(false);
+            }
+        }
+
+        // Check admin role
+        function checkAdminRole() {
+            // For demo purposes, check if user email contains 'admin'
+            const isAdmin = currentUser.username.toLowerCase().includes('admin');
+            
+            if (isAdmin) {
+                document.querySelectorAll('.admin-only').forEach(el => {
+                    el.style.display = 'block';
+                });
+            }
+        }
+
+        // Load admin panel
+        function loadAdminPanel() {
+            // Load users summary
+            const usersSummary = {};
+            entries.forEach(entry => {
+                if (!usersSummary[entry.usuario]) {
+                    usersSummary[entry.usuario] = {
+                        nombre: entry.usuario,
+                        puntos: 0,
+                        entradas: 0
+                    };
+                }
+                usersSummary[entry.usuario].puntos += entry.puntos;
+                usersSummary[entry.usuario].entradas += 1;
+            });
+            
+            const summaryHtml = Object.values(usersSummary).map(user => `
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">${user.nombre}</h5>
+                            <p class="card-text">
+                                <span class="display-6 text-primary">${user.puntos.toFixed(2)}</span><br>
+                                <small class="text-muted">puntos totales</small>
+                            </p>
+                            <p class="card-text">
+                                <small>${user.entradas} entradas</small>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            document.getElementById('usersSummary').innerHTML = `<div class="row">${summaryHtml}</div>`;
+            
+            // Load all entries table
+            displayAdminTable(entries);
+        }
+
+        // Display admin table
+        function displayAdminTable(entriesToDisplay) {
+            const tbody = document.getElementById('adminTableBody');
+            
+            if (entriesToDisplay.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No hay entradas para mostrar</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = entriesToDisplay.map(entry => `
+                <tr>
+                    <td>${entry.usuario}</td>
+                    <td>${formatDate(entry.fecha)}</td>
+                    <td>${entry.expediente}</td>
+                    <td>${entry.tipoEscrito}</td>
+                    <td><span class="badge bg-success">${entry.puntos}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editEntry('${entry.id}')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteEntry('${entry.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Export to CSV
+        function exportToCSV() {
+            let csv = 'Usuario,Fecha,Expediente,Tipo de Escrito,Puntos\n';
+            
+            entries.forEach(entry => {
+                csv += `"${entry.usuario}","${formatDate(entry.fecha)}","${entry.expediente}","${entry.tipoEscrito}",${entry.puntos}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `bonificaciones_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            
+            showNotification('Archivo CSV exportado exitosamente', 'success');
+        }
+
+        // Export to PDF
+        function exportToPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Title
+            doc.setFontSize(20);
+            doc.text('Informe de Bonificaciones', 14, 22);
+            
+            // Date
+            doc.setFontSize(10);
+            doc.text(`Fecha de generación: ${formatDate(new Date().toISOString().split('T')[0])}`, 14, 30);
+            
+            // Table
+            const tableData = entries.map(entry => [
+                entry.usuario,
+                formatDate(entry.fecha),
+                entry.expediente,
+                entry.tipoEscrito,
+                entry.puntos.toString()
+            ]);
+            
+            doc.autoTable({
+                head: [['Usuario', 'Fecha', 'Expediente', 'Tipo de Escrito', 'Puntos']],
+                body: tableData,
+                startY: 40,
+                styles: { fontSize: 8 },
+                headStyles: { fillColor: [44, 62, 80] }
+            });
+            
+            // Summary
+            const usersSummary = {};
+            entries.forEach(entry => {
+                if (!usersSummary[entry.usuario]) {
+                    usersSummary[entry.usuario] = 0;
+                }
+                usersSummary[entry.usuario] += entry.puntos;
+            });
+            
+            const summaryY = doc.autoTable.previous.finalY + 10;
+            doc.setFontSize(12);
+            doc.text('Resumen de Puntos por Usuario', 14, summaryY);
+            
+            let currentY = summaryY + 10;
+            Object.entries(usersSummary).forEach(([usuario, puntos]) => {
+                doc.setFontSize(10);
+                doc.text(`${usuario}: ${puntos.toFixed(2)} puntos`, 14, currentY);
+                currentY += 6;
+            });
+            
+            // Save
+            doc.save(`bonificaciones_${new Date().toISOString().split('T')[0]}.pdf`);
+            
+            showNotification('Archivo PDF exportado exitosamente', 'success');
+        }
+
+        // Utility functions
+        function formatDate(dateString) {
+            const date = new Date(dateString + 'T00:00:00');
+            return date.toLocaleDateString('es-ES', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric' 
+            });
+        }
+
+        function showNotification(message, type = 'info') {
+            const bgColor = {
+                success: '#27ae60',
+                error: '#e74c3c',
+                warning: '#f39c12',
+                info: '#3498db'
+            }[type] || '#3498db';
+            
+            Toastify({
+                text: message,
+                duration: 3000,
+                gravity: "top",
+                position: "right",
+                backgroundColor: bgColor,
+                stopOnFocus: true
+            }).showToast();
+        }
+
+        function showLoading(show) {
+            const spinner = document.querySelector('.loading-spinner');
+            if (show) {
+                spinner.classList.add('show');
+            } else {
+                spinner.classList.remove('show');
+            }
+        }
+
+        // Local storage functions (for demo - replace with Microsoft Graph API calls)
+        function saveToLocalStorage() {
+            localStorage.setItem('bonificaciones_entries', JSON.stringify(entries));
+            localStorage.setItem('bonificaciones_users', JSON.stringify(users));
+        }
+
+        function loadFromLocalStorage() {
+            const savedEntries = localStorage.getItem('bonificaciones_entries');
+            const savedUsers = localStorage.getItem('bonificaciones_users');
+            
+            if (savedEntries) {
+                entries = JSON.parse(savedEntries);
+            }
+            
+            if (savedUsers) {
+                users = JSON.parse(savedUsers);
+            } else {
+                // Default users for demo
+                users = [
+                    { id: '1', nombre: 'Usuario Demo', rol: 'Estándar' },
+                    { id: '2', nombre: 'Admin Demo', rol: 'Admin' }
+                ];
+            }
+        }
+
+        // Initialize application
+        initializeMSAL();
+        
+        // For demo purposes, allow testing without authentication
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            currentUser = {
+                name: 'Usuario Demo',
+                username: 'demo@example.com'
+            };
+            showMainApp();
+        }
+    </script>
+</body>
+</html>
