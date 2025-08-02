@@ -450,11 +450,11 @@
     <script>
         // Configuration
         const msalConfig = {
-            auth: {
-                clientId: "7ef87bab-74a8-4060-83ed-870ec4bccfef", // Replace with your Azure AD app client ID
-                authority: "a70783e2-cf58-4e38-bfd7-b403c7c833af", // Replace with your tenant ID
-                redirectUri: "https://rlxhomie.github.io/Control-Diario-De-Ejecuciones/"
-            },
+    auth: {
+        clientId: "7ef87bab-74a8-4060-83ed-870ec4bccfef",
+        authority: "https://login.microsoftonline.com/a70783e2-cf58-4e38-bfd7-b403c7c833af", // CORREGIDO
+        redirectUri: "https://rlxhomie.github.io/Control-Diario-De-Ejecuciones/"
+    },
             cache: {
                 cacheLocation: "sessionStorage",
                 storeAuthStateInCookie: false
@@ -1216,3 +1216,4 @@
 </body>
 
 </html>
+
