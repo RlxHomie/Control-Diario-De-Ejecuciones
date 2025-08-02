@@ -462,7 +462,7 @@
         };
 
         const loginRequest = {
-            scopes: ["User.Read", "Files.ReadWrite"]
+            scopes: ["User.Read", "Files.ReadWrite", "Files.ReadWrite.All", "Sites.ReadWrite.All"]
         };
 
         // Types of legal documents with points
@@ -715,10 +715,13 @@
             
             try {
                 showLoading(true);
-                // Here you would save to Excel via Microsoft Graph API
-                // For demo, we'll use local storage
                 entries.push(entry);
                 saveToLocalStorage();
+                
+                // Intentar guardar en Excel
+                if (EXCEL_CONFIG.fileId) {
+                    await addEntryToExcel(entry);
+                }
                 
                 // Reset form
                 document.getElementById('registerForm').reset();
@@ -1201,6 +1204,243 @@
             }
         }
 
+        // ========================================
+// CONFIGURACIÓN DE EXCEL
+// ========================================
+
+// IMPORTANTE: Reemplaza estos valores con los tuyos
+const EXCEL_CONFIG = {
+    fileId: "01WYAE7MQH7SY7HM2BD5GJO5HUP3PRFJDN", // El ID que obtuviste del Graph Explorer
+    driveId: null, // El drive ID (opcional, se puede obtener automáticamente)
+    fileName: "Bonificaciones.xlsx", // Nombre de tu archivo
+    folderPath: "/" // Correcto si está en la raíz
+};
+
+// ========================================
+// FUNCIONES DE EXCEL
+// ========================================
+
+// Función para obtener el ID del archivo automáticamente
+async function getExcelFileId() {
+    try {
+        const response = await fetch(
+            `https://graph.microsoft.com/v1.0/me/drive/root:${EXCEL_CONFIG.folderPath}${EXCEL_CONFIG.fileName}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            }
+        );
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Archivo Excel encontrado:', data.name);
+            console.log('File ID:', data.id);
+            EXCEL_CONFIG.fileId = data.id;
+            EXCEL_CONFIG.driveId = data.parentReference.driveId;
+            return data.id;
+        } else {
+            throw new Error('Archivo no encontrado');
+        }
+    } catch (error) {
+        console.error('Error buscando archivo:', error);
+        showNotification('Error: No se encontró el archivo Excel', 'error');
+        return null;
+    }
+}
+
+// Leer datos del Excel
+        async function loadEntriesFromExcel() {
+            try {
+                showLoading(true);
+                
+                // Leer la hoja de Entradas
+                const response = await fetch(
+                    `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL_CONFIG.fileId}/workbook/worksheets('Entradas')/usedRange`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    }
+                );
+                
+                if (!response.ok) {
+                    throw new Error('Error al leer Excel');
+                }
+                
+                const data = await response.json();
+                
+                if (data.values && data.values.length > 1) {
+                    // La primera fila son los headers
+                    const rows = data.values.slice(1);
+                    
+                    entries = rows.map(row => ({
+                        id: row[0]?.toString() || '',
+                        usuario: row[1] || '',
+                        usuarioId: row[1]?.toLowerCase().replace(/\s/g, '.') + '@dmdasesores.com',
+                        fecha: formatExcelDate(row[2]),
+                        expediente: row[3] || '',
+                        tipoEscrito: row[4] || '',
+                        puntos: parseFloat(row[5]) || 0
+                    })).filter(entry => entry.id && entry.expediente);
+                }
+                
+                showLoading(false);
+                showNotification('Datos cargados desde Excel', 'success');
+                console.log(`Se cargaron ${entries.length} entradas`);
+                
+            } catch (error) {
+                console.error('Error al cargar desde Excel:', error);
+                showNotification('Usando datos locales', 'warning');
+                loadFromLocalStorage();
+                showLoading(false);
+            }
+        }
+
+        // Agregar entrada al Excel
+        async function addEntryToExcel(entry) {
+            try {
+                // Primero obtener el número de filas actuales
+                const rangeResponse = await fetch(
+                    `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL_CONFIG.fileId}/workbook/worksheets('Entradas')/usedRange`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    }
+                );
+                
+                const rangeData = await rangeResponse.json();
+                const nextRow = rangeData.values ? rangeData.values.length + 1 : 2;
+                
+                // Preparar los datos
+                const values = [[
+                    entry.id,
+                    entry.usuario,
+                    entry.fecha,
+                    entry.expediente,
+                    entry.tipoEscrito,
+                    entry.puntos
+                ]];
+                
+                // Agregar la nueva fila
+                const response = await fetch(
+                    `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL_CONFIG.fileId}/workbook/worksheets('Entradas')/range(address='A${nextRow}:F${nextRow}')`,
+                    {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ values: values })
+                    }
+                );
+                
+                if (response.ok) {
+                    console.log('Entrada guardada en Excel');
+                } else {
+                    throw new Error('Error al guardar en Excel');
+                }
+                
+            } catch (error) {
+                console.error('Error al guardar en Excel:', error);
+                showNotification('Guardado solo localmente', 'warning');
+            }
+        }
+
+        // Función auxiliar para fechas de Excel
+        function formatExcelDate(value) {
+            if (!value) return '';
+            
+            // Si ya es string en formato DD/MM/YYYY
+            if (typeof value === 'string' && value.includes('/')) {
+                const [day, month, year] = value.split('/');
+                return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            }
+            
+            // Si es número serial de Excel
+            if (typeof value === 'number') {
+                const date = new Date((value - 25569) * 86400 * 1000);
+                return date.toISOString().split('T')[0];
+            }
+            
+            return value;
+        }
+
+// ========================================
+// MODIFICAR FUNCIONES EXISTENTES
+// ========================================
+
+// Reemplazar la función loadUserData actual
+async function loadUserData() {
+    try {
+        showLoading(true);
+        
+        // Intentar cargar desde Excel
+        await loadEntriesFromExcel();
+        
+        showLoading(false);
+    } catch (error) {
+        console.error('Error loading user data:', error);
+        showNotification('Usando modo offline', 'warning');
+        loadFromLocalStorage();
+        showLoading(false);
+    }
+}
+
+// Modificar handleRegister para guardar en Excel
+async function handleRegister(e) {
+    e.preventDefault();
+    
+    const fecha = document.getElementById('fecha').value;
+    const expediente = document.getElementById('expediente').value.trim();
+    const tipoEscrito = document.getElementById('tipoEscrito').value;
+    
+    // Validate expediente is unique
+    if (entries.some(entry => entry.expediente === expediente)) {
+        document.getElementById('expedienteError').textContent = 'Este expediente ya existe';
+        return;
+    }
+    
+    const entry = {
+        id: Date.now().toString(),
+        usuario: currentUser.name,
+        usuarioId: currentUser.username,
+        fecha: fecha,
+        expediente: expediente,
+        tipoEscrito: tipoEscrito,
+        puntos: tiposEscritos[tipoEscrito]
+    };
+    
+    try {
+        showLoading(true);
+        
+        // Agregar localmente primero
+        entries.push(entry);
+        saveToLocalStorage();
+        
+        // Intentar guardar en Excel
+        if (EXCEL_CONFIG.fileId && EXCEL_CONFIG.fileId !== "TU_FILE_ID_AQUI") {
+            await addEntryToExcel(entry);
+        }
+        
+        // Reset form
+        document.getElementById('registerForm').reset();
+        document.getElementById('fecha').value = new Date().toISOString().split('T')[0];
+        document.getElementById('puntosPreview').textContent = '-';
+        
+        showNotification('Entrada registrada exitosamente', 'success');
+        showLoading(false);
+        
+        // Refresh dashboard
+        loadDashboard();
+    } catch (error) {
+        console.error('Error registering entry:', error);
+        showNotification('Error al registrar entrada', 'error');
+        showLoading(false);
+    }
+}
+
                 // Initialize application
         initializeMSAL();
         
@@ -1231,5 +1471,6 @@
 </body>
 
 </html>
+
 
 
