@@ -82,19 +82,3 @@ Las contribuciones son bienvenidas. Por favor:
 3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
-
-## 📝 Licencia
-
-Este proyecto es de uso interno del departamento legal.
-
-## 👥 Autores
-
-- Departamento Legal - [TU-EMPRESA]
-
-## 🆘 Soporte
-
-Para soporte, contacta a: soporte@tuempresa.com
-
----
-
-⭐ Si este proyecto te es útil, considera darle una estrella en GitHub
