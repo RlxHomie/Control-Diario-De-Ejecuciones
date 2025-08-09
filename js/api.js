@@ -5,6 +5,7 @@
 
 import { getAccessToken } from './auth.js';
 import { EXCEL } from './config.js';
+import { parseDateCell } from './utils.js';
 
 /** Fetch a Graph API con token + retry 429. */
 export async function graphFetch(url, options = {}) {
@@ -70,4 +71,138 @@ export async function refreshRowIndex(tableName, map) {
     const id = String(r.values[0][0] || "");
     if (id) map.set(id, r.index);
   });
+}
+
+/**
+ * Carga todos los datos necesarios del Excel en una sola operación batch.
+ * @returns {Promise<Object>}
+ */
+export async function loadAllData() {
+  const base = `/me/drive/items/${EXCEL.fileId}/workbook/tables`;
+  
+  const requests = [
+    { id: "1", method: "GET", url: `${base}('${EXCEL.tables.Usuarios}')/rows` },
+    { id: "2", method: "GET", url: `${base}('${EXCEL.tables.Tipos}')/rows` },
+    { id: "3", method: "GET", url: `${base}('${EXCEL.tables.Config}')/rows` },
+    { id: "4", method: "GET", url: `${base}('${EXCEL.tables.Entradas}')/rows` },
+    { id: "5", method: "GET", url: `${base}('${EXCEL.tables.Historial}')/rows` },
+    { id: "6", method: "GET", url: `${base}('${EXCEL.tables.Calendario}')/rows` }
+  ];
+
+  const responses = await graphBatch(requests);
+  
+  const result = {
+    users: [],
+    tiposEscritos: [],
+    configuracion: {},
+    entries: [],
+    historialCambios: [],
+    festivos: [],
+    rowIndexMaps: {
+      Entradas: new Map(),
+      Usuarios: new Map(),
+      Tipos: new Map()
+    }
+  };
+
+  // Procesar usuarios
+  const usersResp = responses.find(r => r.id === "1");
+  if (usersResp?.status === 200) {
+    usersResp.body.value.forEach(row => {
+      const [id, nombre, email, rol, sede, vacaciones] = row.values[0];
+      if (id) {
+        result.users.push({
+          id: String(id),
+          nombre: String(nombre || ""),
+          email: String(email || "").toLowerCase(),
+          rol: String(rol || "usuario"),
+          sede: String(sede || ""),
+          vacaciones: String(vacaciones || "")
+        });
+        result.rowIndexMaps.Usuarios.set(String(id), row.index);
+      }
+    });
+  }
+
+  // Procesar tipos de escritos
+  const tiposResp = responses.find(r => r.id === "2");
+  if (tiposResp?.status === 200) {
+    tiposResp.body.value.forEach(row => {
+      const [id, nombre, puntuacion, activo] = row.values[0];
+      if (id) {
+        result.tiposEscritos.push({
+          id: String(id),
+          nombre: String(nombre || ""),
+          puntuacion: Number(puntuacion) || 0,
+          activo: activo !== false
+        });
+        result.rowIndexMaps.Tipos.set(String(id), row.index);
+      }
+    });
+  }
+
+  // Procesar configuración
+  const configResp = responses.find(r => r.id === "3");
+  if (configResp?.status === 200 && configResp.body.value.length > 0) {
+    const [puntosPorDia, bonoMensual, fechaVigencia] = configResp.body.value[0].values[0];
+    result.configuracion = {
+      puntosPorDia: Number(puntosPorDia) || 2,
+      bonoMensual: Number(bonoMensual) || 300,
+      fechaVigencia: parseDateCell(fechaVigencia) || new Date().toISOString().slice(0, 10)
+    };
+  }
+
+  // Procesar entradas
+  const entriesResp = responses.find(r => r.id === "4");
+  if (entriesResp?.status === 200) {
+    entriesResp.body.value.forEach(row => {
+      const [id, usuario, email, fecha, expediente, tipoId, puntos, comentario] = row.values[0];
+      if (id) {
+        result.entries.push({
+          id: String(id),
+          usuario: String(usuario || ""),
+          email: String(email || "").toLowerCase(),
+          fecha: parseDateCell(fecha),
+          expediente: String(expediente || ""),
+          tipoId: String(tipoId || ""),
+          puntos: Number(puntos) || 0,
+          comentario: String(comentario || "")
+        });
+        result.rowIndexMaps.Entradas.set(String(id), row.index);
+      }
+    });
+  }
+
+  // Procesar historial de cambios
+  const historialResp = responses.find(r => r.id === "5");
+  if (historialResp?.status === 200) {
+    historialResp.body.value.forEach(row => {
+      const [fecha, usuario, accion, detalle] = row.values[0];
+      if (fecha) {
+        result.historialCambios.push({
+          fecha: parseDateCell(fecha),
+          usuario: String(usuario || ""),
+          accion: String(accion || ""),
+          detalle: String(detalle || "")
+        });
+      }
+    });
+  }
+
+  // Procesar festivos
+  const festivosResp = responses.find(r => r.id === "6");
+  if (festivosResp?.status === 200) {
+    festivosResp.body.value.forEach(row => {
+      const [fecha, sede, descripcion] = row.values[0];
+      if (fecha) {
+        result.festivos.push({
+          fecha: parseDateCell(fecha),
+          sede: String(sede || "").toLowerCase(),
+          descripcion: String(descripcion || "")
+        });
+      }
+    });
+  }
+
+  return result;
 }
