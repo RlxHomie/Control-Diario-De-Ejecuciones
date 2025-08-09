@@ -552,7 +552,7 @@ function parseDateCell(v){
   if (typeof v === "number") return fromExcelSerial(v);
   if (typeof v === "string"){
     if (v.includes("T")) return v.split("T")[0];
-    if (v.includes("/")){ const [d,m,y]=v.split("/"); return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`; }
+    if (v.includes("/")){ const [d,m,y]=v.split("/"); return ${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}; }
     return v;
   }
   return String(v);
@@ -664,7 +664,7 @@ async function graphFetch(url, options={}){
   const token = await getAccessToken();
   const res = await fetch(url, {
     ...options,
-    headers: { ...(options.headers||{}), Authorization:`Bearer ${token}` }
+    headers: { ...(options.headers||{}), Authorization:Bearer ${token} }
   });
   if (res.status === 429){
     const wait = parseInt(res.headers.get("Retry-After")||"2",10)*1000;
@@ -673,7 +673,7 @@ async function graphFetch(url, options={}){
   }
   if (!res.ok) {
     const txt = await res.text().catch(()=> "");
-    throw new Error(`Graph error ${res.status}: ${txt}`);
+    throw new Error(Graph error ${res.status}: ${txt});
   }
   return res;
 }
@@ -683,10 +683,10 @@ async function graphBatch(requests){
   const token = await getAccessToken();
   const res = await fetch("https://graph.microsoft.com/v1.0/$batch",{
     method:"POST",
-    headers:{ "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
+    headers:{ "Authorization":Bearer ${token}, "Content-Type":"application/json" },
     body: JSON.stringify({ requests })
   });
-  if (!res.ok) throw new Error(`Batch error ${res.status}`);
+  if (!res.ok) throw new Error(Batch error ${res.status});
   return (await res.json()).responses;
 }
 
@@ -695,24 +695,24 @@ async function graphBatch(requests){
 ============================== */
 // Obtener filas de una tabla (values)
 async function getTableRows(tableName){
-  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows`;
+  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows;
   const res = await graphFetch(url);
   const data = await res.json();
   return data.value || [];
 }
 // Añadir fila a tabla
 async function addRow(tableName, rowValues){
-  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/add`;
+  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/add;
   await graphFetch(url, { method:"POST", headers:{ "Content-Type":"application/json"}, body: JSON.stringify({ values: [rowValues] }) });
 }
 // Reemplazar fila por index
 async function replaceRow(tableName, rowIndex, rowValues){
-  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex}/range`;
+  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex}/range;
   await graphFetch(url, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ values:[rowValues] }) });
 }
 // Borrar fila por index
 async function deleteRow(tableName, rowIndex){
-  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex}`;
+  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex};
   await graphFetch(url, { method:"DELETE" });
 }
 
@@ -721,14 +721,14 @@ async function deleteRow(tableName, rowIndex){
 ============================== */
 async function loadAllData(){
   // $batch para 6 lecturas
-  const base = `/me/drive/items/${EXCEL.fileId}/workbook/tables`;
+  const base = /me/drive/items/${EXCEL.fileId}/workbook/tables;
   const reqs = [
-    { id:"usuarios", method:"GET", url:`${base}('${EXCEL.tables.Usuarios}')/rows` },
-    { id:"tipos", method:"GET", url:`${base}('${EXCEL.tables.Tipos}')/rows` },
-    { id:"config", method:"GET", url:`${base}('${EXCEL.tables.Config}')/rows` },
-    { id:"entradas", method:"GET", url:`${base}('${EXCEL.tables.Entradas}')/rows` },
-    { id:"hist", method:"GET", url:`${base}('${EXCEL.tables.Historial}')/rows` },
-    { id:"cal", method:"GET", url:`${base}('${EXCEL.tables.Calendario}')/rows` }
+    { id:"usuarios", method:"GET", url:${base}('${EXCEL.tables.Usuarios}')/rows },
+    { id:"tipos", method:"GET", url:${base}('${EXCEL.tables.Tipos}')/rows },
+    { id:"config", method:"GET", url:${base}('${EXCEL.tables.Config}')/rows },
+    { id:"entradas", method:"GET", url:${base}('${EXCEL.tables.Entradas}')/rows },
+    { id:"hist", method:"GET", url:${base}('${EXCEL.tables.Historial}')/rows },
+    { id:"cal", method:"GET", url:${base}('${EXCEL.tables.Calendario}')/rows }
   ];
   const resps = await graphBatch(reqs);
 
@@ -770,7 +770,7 @@ function mapResp(id) {
     if (code === 'ItemNotFound' || String(code).includes('0x8002802B')) return [];
     // Otros errores: sí lanzamos para enterarnos
     const msg  = body?.error?.message || body?.message || JSON.stringify(body);
-    throw new Error(`$batch[${id}] status=${r.status} code=${code} msg=${msg}`);
+    throw new Error($batch[${id}] status=${r.status} code=${code} msg=${msg});
   }
   const body = readBatchBody(r);
   return body?.value || [];
@@ -854,8 +854,8 @@ function getWorkingDaysYYYYMM(yyyyMM, sede, vacacionesCsv){
   const festSet = new Set(getFestivosByMonthSede(yyyyMM, sede).map(f=>f.fecha));
   const days=[];
   for(let d=1; d<=lastDay; d++){
-    const date = `${Y}-${String(Mnum).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const wd = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const date = ${Y}-${String(Mnum).padStart(2,'0')}-${String(d).padStart(2,'0')};
+    const wd = new Date(${date}T00:00:00Z).getUTCDay();
     if (wd===0 || wd===6) continue; // fin de semana
     if (festSet.has(date)) continue; // festivo
     if (vacSet.has(date)) continue; // vacaciones
@@ -882,7 +882,7 @@ function populateTipoSelects(){
     if (!sel) return;
     sel.innerHTML = i===2 ? '<option value="">Todos</option>' : '<option value="">Seleccione un tipo…</option>';
     actives.forEach(t=>{
-      const opt = new Option(`${t.nombre} (${t.puntuacion} pts)`, t.id);
+      const opt = new Option(${t.nombre} (${t.puntuacion} pts), t.id);
       sel.add(opt.cloneNode(true));
     });
   });
@@ -901,7 +901,7 @@ function populateUsersForSupervisor(){
 function updatePointsPreview(){
   const id = document.getElementById('tipoEscrito').value;
   const t = tiposEscritos.find(x=>x.id===id);
-  document.getElementById('puntosPreview').textContent = t ? `${t.puntuacion} puntos` : '-';
+  document.getElementById('puntosPreview').textContent = t ? ${t.puntuacion} puntos : '-';
 }
 
 /* ==== Gráficos ==== */
@@ -970,7 +970,7 @@ function initCharts(){
           callbacks:{
             label(ctx){
               const v = ctx.parsed.y ?? 0;
-              return `${ctx.dataset.label}: ${v.toFixed(2)} pts`;
+              return ${ctx.dataset.label}: ${v.toFixed(2)} pts;
             }
           }
         }
@@ -982,37 +982,36 @@ function initCharts(){
     }
   });
 
-  // --- initCharts(): gauge sin leyenda ni labels ---
-gaugeChart = new Chart(ctxGauge,{
-  type:'doughnut',
-  data:{
-    labels: [],                // <- sin etiquetas
-    datasets:[{
-      data:[0,100],
-      cutout:'72%',
-      backgroundColor:['#4c92ff','#e9eef7']
-    }]
-  },
-  options:{
-    responsive:true,
-    maintainAspectRatio:false,
-    plugins:{
-      legend:{ display:false },   // <- leyenda fuera
-      tooltip:{ enabled:false },
-      centerText:{ text:'0%' }
+  gaugeChart = new Chart(ctxGauge,{
+    type:'doughnut',
+    data:{
+      labels:['Progreso','Pendiente'],
+      datasets:[{
+        data:[0,100],
+        cutout:'72%',
+        backgroundColor:['#4c92ff','#e9eef7']
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ enabled:false },
+        centerText:{ text:'0%' } // <- lo actualizamos en renderGauge
+      }
     }
-  }
-});
+  });
 }
 function renderGauge(percentage){
   const val = Math.max(0, Math.min(100, percentage));
   gaugeChart.data.datasets[0].data = [val, 100 - val];
-  gaugeChart.options.plugins.centerText.text = `${val.toFixed(0)}%`;
+  gaugeChart.options.plugins.centerText.text = ${val.toFixed(0)}%;
   gaugeChart.update('none');
 
   // Accesibilidad: describir el valor actual en el canvas
   const gc = document.getElementById('gaugeChart');
-  gc.setAttribute('aria-label', `Indicador de progreso general: ${val.toFixed(0)}%`);
+  gc.setAttribute('aria-label', Indicador de progreso general: ${val.toFixed(0)}%);
 }
 
 
@@ -1039,15 +1038,15 @@ function loadDashboard(){
   // KPIs
   document.getElementById('monthPoints').textContent = totalPoints.toFixed(2);
   document.getElementById('workDays').textContent = workDays.length;
-  document.getElementById('goalPercentage').textContent = `${perc.toFixed(1)}%`;
+  document.getElementById('goalPercentage').textContent = ${perc.toFixed(1)}%;
   document.getElementById('monthlyBonus').textContent = fmtEUR.format(bonus);
 
   // Estado
 const bar = document.getElementById('progressBar');
 const val = Math.max(0, Math.min(100, Math.round(perc))); // valor seguro 0–100
-bar.style.width = `${val}%`;
+bar.style.width = ${val}%;
 bar.setAttribute('aria-valuenow', String(val));
-bar.setAttribute('aria-valuetext', `${val}% de la meta del mes`);
+bar.setAttribute('aria-valuetext', ${val}% de la meta del mes);
 
 const badge = document.getElementById('stateBadge');
 if (val >= 100) {
@@ -1085,7 +1084,7 @@ if (val >= 100) {
     const ok = pts >= configuracion.puntosPorDia;
     const isPastOrToday = todayRel===null ? true : (d<=todayRel);
     const cls = isPastOrToday ? (ok ? 'bg-success' : 'bg-danger') : 'bg-secondary';
-    return `<span class="badge ${cls} badge-chip me-1 mb-1">Día ${d}: ${pts.toFixed(2)}/${configuracion.puntosPorDia}</span>`;
+    return <span class="badge ${cls} badge-chip me-1 mb-1">Día ${d}: ${pts.toFixed(2)}/${configuracion.puntosPorDia}</span>;
   }).join("");
   document.getElementById('dailyStatus').innerHTML = chips;
 
@@ -1093,14 +1092,14 @@ if (val >= 100) {
   const recent = myEntries.slice(-10).reverse();
   document.getElementById('recentEntries').innerHTML = recent.length ? recent.map(e=>{
     const tipo = tipoMap.get(e.tipoId);
-    return `<div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+    return <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
       <div>
         <strong>${esc(tipo?.nombre || e.tipoId)}</strong><br>
         <small class="subtle">${esc(e.expediente)} — ${esc(e.fecha)}</small>
-        ${e.comentario ? `<br><small>${esc(e.comentario)}</small>`:""}
+        ${e.comentario ? <br><small>${esc(e.comentario)}</small>:""}
       </div>
       <span class="badge bg-success">${(e.puntos || tipo?.puntuacion || 0)} pts</span>
-    </div>`;
+    </div>;
   }).join("") : '<div class="subtle text-center">Sin registros este mes</div>';
 }
 
@@ -1114,11 +1113,11 @@ function loadHistory(){
 function renderHistoryTable(arr, tipoMap){
   if (!Array.isArray(arr)) return;
   const tbody = document.getElementById('historyTableBody');
-  if (!arr.length){ tbody.innerHTML = `<tr><td colspan="6" class="text-center subtle">No hay entradas</td></tr>`; return; }
+  if (!arr.length){ tbody.innerHTML = <tr><td colspan="6" class="text-center subtle">No hay entradas</td></tr>; return; }
   const sorted = [...arr].sort((a,b)=> b.fecha.localeCompare(a.fecha));
   tbody.innerHTML = sorted.map(e=>{
     const tipo = tipoMap.get(e.tipoId);
-    return `<tr>
+    return <tr>
       <td>${esc(e.fecha)}</td>
       <td>${esc(e.expediente)}</td>
       <td>${esc(tipo?.nombre || e.tipoId)}</td>
@@ -1128,7 +1127,7 @@ function renderHistoryTable(arr, tipoMap){
         <button class="btn btn-sm btn-primary me-1" onclick="editEntry('${e.id}')"><i class="fa-solid fa-pen"></i></button>
         <button class="btn btn-sm btn-danger" onclick="deleteEntry('${e.id}')"><i class="fa-solid fa-trash"></i></button>
       </td>
-    </tr>`;
+    </tr>;
   }).join("");
 }
 function applyFilters(){
@@ -1302,27 +1301,27 @@ function loadSupervisorDashboard(){
 function renderRanking(stats){
   const container = document.getElementById('rankingTable');
   if (!stats.length){ container.innerHTML = '<div class="subtle text-center">Sin datos</div>'; return; }
-  let html = `<div class="table-responsive"><table class="table align-middle table-hover"><thead>
-    <tr><th>Pos.</th><th>Usuario</th><th>Puntos</th><th>Entradas</th><th>% Meta</th><th>Bono</th></tr></thead><tbody>`;
+  let html = <div class="table-responsive"><table class="table align-middle table-hover"><thead>
+    <tr><th>Pos.</th><th>Usuario</th><th>Puntos</th><th>Entradas</th><th>% Meta</th><th>Bono</th></tr></thead><tbody>;
   stats.forEach((s,i)=>{
     const pos=i+1;
     const medal = pos===1?'<i class="fa-solid fa-trophy text-warning rank-medal"></i>': (pos<=3?'<i class="fa-solid fa-medal text-secondary rank-medal"></i>':'');
     const bonus = s.porcentaje>=100 ? configuracion.bonoMensual : 0;
-    html += `<tr>
+    html += <tr>
       <td>${medal} ${pos}</td>
       <td>${esc(s.nombre)} ${s.rol==='supervisor'?'<span class="supervisor-badge">SUP</span>':''}</td>
       <td><span class="badge bg-primary">${s.puntos.toFixed(2)}</span></td>
       <td>${s.entradas}</td>
       <td><div class="progress" style="width:120px"><div class="progress-bar ${s.porcentaje>=100?'bg-success':'bg-warning'}" style="width:${Math.min(s.porcentaje,100)}%">${s.porcentaje.toFixed(0)}%</div></div></td>
       <td>${fmtEUR.format(bonus)}</td>
-    </tr>`;
+    </tr>;
   });
-  html += `</tbody></table></div>`;
+  html += </tbody></table></div>;
   container.innerHTML = html;
 }
 function renderUsersManagement(){
   const tbody = document.getElementById('usersManagementTable');
-  tbody.innerHTML = users.map(u=>`
+  tbody.innerHTML = users.map(u=>
     <tr>
       <td>${esc(u.nombre)}</td>
       <td>${esc(u.email)}</td>
@@ -1331,7 +1330,7 @@ function renderUsersManagement(){
       <td>${u.vacaciones ? u.vacaciones.split(',').filter(Boolean).length : 0} días</td>
       <td><button class="btn btn-sm btn-primary" onclick="editUser('${u.id}')"><i class="fa-solid fa-pen"></i> Editar</button></td>
     </tr>
-  `).join('');
+  ).join('');
 }
 function editUser(userId){
   if (currentUserData?.rol!=="supervisor"){ toast("Sin permisos","error"); return; }
@@ -1368,16 +1367,16 @@ function displayEscritoTypes(){
   const tbody = document.getElementById('escritosTypesTable');
   tbody.innerHTML = tiposEscritos.map(t=>{
     const inUse = entries.some(e=>e.tipoId===t.id);
-    return `<tr>
+    return <tr>
       <td>${esc(t.id)}</td>
       <td>${esc(t.nombre)}</td>
       <td>${t.puntuacion}</td>
       <td><span class="badge ${t.activo?'bg-success':'bg-danger'}">${t.activo?'Activo':'Inactivo'}</span></td>
       <td>
         <button class="btn btn-sm btn-primary me-1" onclick="editEscritoType('${t.id}')"><i class="fa-solid fa-pen"></i></button>
-        ${!inUse ? `<button class="btn btn-sm btn-danger" onclick="deleteEscritoType('${t.id}')"><i class="fa-solid fa-trash"></i></button>`:''}
+        ${!inUse ? <button class="btn btn-sm btn-danger" onclick="deleteEscritoType('${t.id}')"><i class="fa-solid fa-trash"></i></button>:''}
       </td>
-    </tr>`;
+    </tr>;
   }).join('');
 }
 function showEscritoModal(id=null){
@@ -1430,7 +1429,7 @@ async function saveEscritoType(){
 async function deleteEscritoType(id){
   const t = tiposEscritos.find(x=>x.id===id); if (!t) return;
   if (entries.some(e=>e.tipoId===id)){ toast("Está en uso, desactívalo en su lugar","warning"); return; }
-  if (!confirm(`¿Eliminar "${t.nombre}"?`)) return;
+  if (!confirm(¿Eliminar "${t.nombre}"?)) return;
   try{
     showLoading(true);
     const rowIndex = rowIndexMaps.Tipos.get(id);
@@ -1450,13 +1449,13 @@ function exportRankingCSV(stats, yyyyMM){
   ];
   stats.forEach((s,i)=>{
     const bonus = s.porcentaje>=100 ? configuracion.bonoMensual : 0;
-    rows.push([i+1, s.nombre, s.puntos.toFixed(2), s.entradas, `${s.porcentaje.toFixed(0)}%`, bonus.toFixed(2)]);
+    rows.push([i+1, s.nombre, s.puntos.toFixed(2), s.entradas, ${s.porcentaje.toFixed(0)}%, bonus.toFixed(2)]);
   });
-  const csv = rows.map(r=> r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r=> r.map(v => "${String(v).replace(/"/g,'""')}").join(',')).join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `ranking_${yyyyMM}.csv`;
+  a.download = ranking_${yyyyMM}.csv;
   a.click();
 }
 function buildStatsForMonth(yyyyMM, emailFilter=""){
@@ -1482,7 +1481,7 @@ function buildStatsForMonth(yyyyMM, emailFilter=""){
 async function exportPDFReport(yyyyMM, scope, email=""){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
-  const title = scope==='usuario' ? `Reporte de rendimiento — ${yyyyMM}` : `Reporte departamento — ${yyyyMM}`;
+  const title = scope==='usuario' ? Reporte de rendimiento — ${yyyyMM} : Reporte departamento — ${yyyyMM};
 
   doc.setFontSize(16); doc.text(title, 40, 40);
   doc.setFontSize(11);
@@ -1490,9 +1489,9 @@ async function exportPDFReport(yyyyMM, scope, email=""){
   const stats = buildStatsForMonth(yyyyMM, scope==='usuario'? email : "");
   const rows = stats.map((s,i)=>[
     i+1, s.nombre, s.rol, s.sede || '-', s.entradas, s.puntos.toFixed(2),
-    `${s.porcentaje.toFixed(0)}%`, (s.porcentaje>=100?configuracion.bonoMensual:0).toFixed(2)
+    ${s.porcentaje.toFixed(0)}%, (s.porcentaje>=100?configuracion.bonoMensual:0).toFixed(2)
   ]);
-  doc.text(`Meta diaria: ${configuracion.puntosPorDia} pts — Bono mensual: ${fmtEUR.format(configuracion.bonoMensual)}`, 40, 62);
+  doc.text(Meta diaria: ${configuracion.puntosPorDia} pts — Bono mensual: ${fmtEUR.format(configuracion.bonoMensual)}, 40, 62);
   doc.autoTable({
     startY: 80,
     head: [['Pos','Usuario','Rol','Sede','Entradas','Puntos','% Meta','Bono (€)']],
@@ -1500,7 +1499,7 @@ async function exportPDFReport(yyyyMM, scope, email=""){
     theme: 'grid',
     styles: { fontSize:10, cellPadding:4 }
   });
-  doc.save(`reporte_${scope==='usuario' ? email.replace(/@.*/,'')+'_' : ''}${yyyyMM}.pdf`);
+  doc.save(reporte_${scope==='usuario' ? email.replace(/@.*/,'')+'_' : ''}${yyyyMM}.pdf);
 }
 
 /* ==============================
@@ -1510,7 +1509,7 @@ function showSection(sec){
   document.querySelectorAll('.content-section').forEach(s=>s.style.display='none');
   document.getElementById(sec+'Section').style.display='block';
   document.querySelectorAll('.nav-link[data-section]').forEach(a=>a.classList.remove('active'));
-  document.querySelector(`.nav-link[data-section="${sec}"]`)?.classList.add('active');
+  document.querySelector(.nav-link[data-section="${sec}"])?.classList.add('active');
 
   if (sec==='dashboard') loadDashboard();
   if (sec==='history') loadHistory();
@@ -1520,9 +1519,9 @@ function showSection(sec){
 function renderAuditLog(){
   const tbody = document.getElementById('auditLogTable');
   const recent = historialCambios.slice(-40).reverse();
-  tbody.innerHTML = recent.length ? recent.map(h=>`
+  tbody.innerHTML = recent.length ? recent.map(h=>
     <tr><td>${esc(new Date(h.fecha).toLocaleString('es-ES'))}</td><td>${esc(h.usuario)}</td><td>${esc(h.accion)}</td><td><small>${esc(h.detalle)}</small></td></tr>
-  `).join("") : `<tr><td colspan="4" class="text-center subtle">Sin cambios</td></tr>`;
+  ).join("") : <tr><td colspan="4" class="text-center subtle">Sin cambios</td></tr>;
 }
 
 /* ==============================
@@ -1664,17 +1663,4 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
 
