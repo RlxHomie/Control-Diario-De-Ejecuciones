@@ -4,13 +4,12 @@
 import { EXCEL } from './config.js';
 import { addRow, replaceRow, deleteRow, getTableRows } from './api.js';
 import {
-  entries, users, tiposEscritos, configuracion, rowIndexMaps,
-  currentUser, currentUserData,
-  setEntries
+  entries, tiposEscritos, rowIndexMaps,
+  currentUser, currentUserData, setEntries,
+  getUserByEmail // <- desde data.js (no utils)
 } from './data.js';
 import {
-  esc, fmtEUR, parseDateCell, showLoading, toast,
-  getWorkingDaysYYYYMM, getRelativeTodayDay, monthOf, getUserByEmail
+  esc, fmtEUR, parseDateCell, showLoading, toast
 } from './utils.js';
 
 /** @typedef {{id:string, usuario:string, email:string, fecha:string, expediente:string, tipoId:string, puntos:number, comentario:string}} Entry */
@@ -123,7 +122,7 @@ export async function handleRegister(ev) {
     const pp = document.getElementById('puntosPreview');
     if (pp) pp.textContent = '-';
 
-    // Dejar que el dashboard/historial se refresquen
+    // Notificar a vistas dependientes
     document.dispatchEvent(new CustomEvent('entries:changed'));
   } catch (err) {
     console.error(err);
@@ -148,16 +147,11 @@ export function editEntry(id) {
     return;
   }
 
-  /** @type {HTMLInputElement} */
-  (document.getElementById('editId')).value = e.id;
-  /** @type {HTMLInputElement} */
-  (document.getElementById('editFecha')).value = e.fecha;
-  /** @type {HTMLInputElement} */
-  (document.getElementById('editExpediente')).value = e.expediente;
-  /** @type {HTMLSelectElement} */
-  (document.getElementById('editTipoEscrito')).value = e.tipoId;
-  /** @type {HTMLTextAreaElement} */
-  (document.getElementById('editComentario')).value = e.comentario || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('editId')).value = e.id;
+  /** @type {HTMLInputElement} */ (document.getElementById('editFecha')).value = e.fecha;
+  /** @type {HTMLInputElement} */ (document.getElementById('editExpediente')).value = e.expediente;
+  /** @type {HTMLSelectElement} */ (document.getElementById('editTipoEscrito')).value = e.tipoId;
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('editComentario')).value = e.comentario || '';
 
   const modalEl = document.getElementById('editModal');
   if (modalEl) new bootstrap.Modal(modalEl).show();
