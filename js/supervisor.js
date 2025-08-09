@@ -2,13 +2,13 @@
 // Panel de supervisión: ranking, gestión de usuarios y tipos
 
 import { EXCEL } from './config.js';
-import { replaceRow, deleteRow, addRow } from './api.js';
+import { replaceRow, deleteRow, addRow, refreshRowIndex } from './api.js';
 import {
   entries, users, tiposEscritos, configuracion, rowIndexMaps,
   currentUserData,
   setUsers, setTiposEscritos
 } from './data.js';
-import { getUserByEmail } from './data.js';
+import { esc, fmtEUR, showLoading, toast, getWorkingDaysYYYYMM, getUserByEmail } from './utils.js';
 
 /**
  * Calcula el ranking y métricas para un mes dado y (opcional) un email.
@@ -248,6 +248,7 @@ export function showEscritoModal(id = null) {
   if (modal) new bootstrap.Modal(modal).show();
 }
 
+// Alias para compatibilidad
 export const editEscritoType = (id) => showEscritoModal(id);
 
 /**
@@ -277,6 +278,7 @@ export async function saveEscritoType() {
       setTiposEscritos(copy);
     } else {
       await addRow(EXCEL.tables.Tipos, [id, nombre, puntuacion, activo]);
+      await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps().Tipos);
       const copy = [...tipos, { id, nombre, puntuacion, activo }];
       setTiposEscritos(copy);
     }
@@ -312,6 +314,7 @@ export async function deleteEscritoType(id) {
     showLoading(true);
     const rowIndex = rowIndexMaps().Tipos.get(id);
     await deleteRow(EXCEL.tables.Tipos, rowIndex);
+    await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps().Tipos);
 
     setTiposEscritos(tiposEscritos().filter(x => x.id !== id));
     toast('Tipo eliminado', 'success');
@@ -362,4 +365,3 @@ export function loadSupervisorDashboard() {
   renderRanking(stats);
   renderUsersManagement();
 }
-
