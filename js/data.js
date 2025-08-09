@@ -2,6 +2,14 @@
 // Estado centralizado (store) y utilidades derivadas del estado.
 // ESM limpio, sin comas colgantes y con JSDoc para mantenimiento.
 
+import {
+  // funciones puras desde utils (reciben festivos por parámetro)
+  getFestivosByMonthSede as _uGetFestivosByMonthSede,
+  getWorkingDaysYYYYMM as _uGetWorkingDaysYYYYMM,
+  getRelativeTodayDay as _uGetRelativeTodayDay,
+  monthOf as _uMonthOf
+} from './utils.js';
+
 /**
  * @typedef {Object} User
  * @property {string} id
@@ -177,21 +185,40 @@ export function getTipoMap() {
   return m;
 }
 
-/* =========================
-   Re-exports (helpers comunes)
-   Evita duplicación: dejamos la lógica en utils.js,
-   pero exportamos aquí para mantener compat con imports existentes.
-========================= */
-export {
-  // Busca un usuario por email en el estado actual
-  getUserByEmail,
-  // Festivos y días laborables
-  getFestivosByMonthSede,
-  getWorkingDaysYYYYMM,
-  // Fechas relativas/mes
-  getRelativeTodayDay,
-  monthOf
-} from './utils.js';
+/**
+ * Busca un usuario por email en el estado actual.
+ * @param {string} email
+ * @returns {User|null}
+ */
+export function getUserByEmail(email) {
+  const em = String(email || '').toLowerCase();
+  return users().find(u => u.email.toLowerCase() === em) || null;
+}
+
+/**
+ * Festivos del mes por sede, inyectando el estado actual.
+ * @param {string} yyyyMM
+ * @param {string} sede
+ */
+export function getFestivosByMonthSede(yyyyMM, sede) {
+  return _uGetFestivosByMonthSede(festivos(), yyyyMM, sede);
+}
+
+/**
+ * Días laborables L–V del mes menos festivos/vacaciones, inyectando festivos de estado.
+ * @param {string} yyyyMM
+ * @param {string} sede
+ * @param {string} vacacionesCsv
+ * @returns {number[]} días del mes (1..n)
+ */
+export function getWorkingDaysYYYYMM(yyyyMM, sede, vacacionesCsv) {
+  return _uGetWorkingDaysYYYYMM(yyyyMM, festivos(), sede, vacacionesCsv);
+}
+
+/** Día de hoy si cae dentro de yyyyMM, o null */
+export const getRelativeTodayDay = _uGetRelativeTodayDay;
+/** Devuelve 'YYYY-MM' de una fecha 'YYYY-MM-DD' */
+export const monthOf = _uMonthOf;
 
 /* =========================
    Utilidades de mantenimiento
