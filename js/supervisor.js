@@ -5,10 +5,10 @@ import { EXCEL } from './config.js';
 import { replaceRow, deleteRow, addRow, refreshRowIndex } from './api.js';
 import {
   entries, users, tiposEscritos, configuracion, rowIndexMaps,
-  currentUserData,
+  currentUserData, getUserByEmail,
   setUsers, setTiposEscritos
 } from './data.js';
-import { esc, fmtEUR, showLoading, toast, getWorkingDaysYYYYMM, getUserByEmail } from './utils.js';
+import { esc, fmtEUR, showLoading, toast, getWorkingDaysYYYYMM } from './utils.js';
 
 /**
  * Calcula el ranking y métricas para un mes dado y (opcional) un email.
