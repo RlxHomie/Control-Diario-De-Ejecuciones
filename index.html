@@ -1,4 +1,451 @@
-<!DOCTYPE html>
+/* ==== Historial ==== */
+function loadHistory(){
+  const myEmail = currentUser.username.toLowerCase();
+  const tipoMap = getTipoMap();
+  const myEntries = entries.filter(e=> e.email===myEmail);
+  renderHistoryTable(myEntries, tipoMap);
+}
+
+function renderHistoryTable(arr, tipoMap){
+  if (!Array.isArray(arr)) return;
+  const tbody = document.getElementById('historyTableBody');
+  if (!arr.length){ 
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center subtle">No hay entradas</td></tr>`; 
+    return; 
+  }
+  const sorted = [...arr].sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  tbody.innerHTML = sorted.map(e=>{
+    const tipo = tipoMap.get(e.tipoId);
+    return `<tr>
+      <td>${esc(e.fecha)}</td>
+      <td>${esc(e.expediente)}</td>
+      <td>${esc(tipo?.nombre || e.tipoId)}</td>
+      <td><span class="badge bg-primary">${(e.puntos || tipo?.puntuacion || 0)}</span></td>
+      <td>${e.comentario ? esc(e.comentario) : '-'}</td>
+      <td>
+        <button class="btn btn-sm btn-primary me-1" onclick="editEntry('${e.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="deleteEntry('${e.id}')"><i class="fa-solid fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function applyFilters(){
+  const myEmail = currentUser.username.toLowerCase();
+  const tipoMap = getTipoMap();
+  const df = document.getElementById('filterDateFrom').value;
+  const dt = document.getElementById('filterDateTo').value;
+  const typeId = document.getElementById('filterType').value;
+  let filtered = entries.filter(e=> e.email===myEmail);
+  if (df) filtered = filtered.filter(e=> e.fecha >= df);
+  if (dt) filtered = filtered.filter(e=> e.fecha <= dt);
+  if (typeId) filtered = filtered.filter(e=> e.tipoId === typeId);
+  renderHistoryTable(filtered, tipoMap);
+}
+
+/* ==== Registro / Editar / Eliminar ==== */
+function isExpedienteDuplicateForUserMonth(email, yyyyMM, expediente, ignoreEntryId=null){
+  return entries.some(e =>
+    e.email===email.toLowerCase() &&
+    e.fecha.startsWith(yyyyMM) &&
+    e.expediente===expediente &&
+    e.id!==ignoreEntryId
+  );
+}
+
+async function handleRegister(e){
+  e.preventDefault();
+  const fecha = document.getElementById('fecha').value;
+  const expediente = document.getElementById('expediente').value.trim();
+  const tipoId = document.getElementById('tipoEscrito').value;
+  const comentario = document.getElementById('comentario').value.trim();
+
+  const myEmail = currentUser.username.toLowerCase();
+  const yyyyMM = fecha.slice(0,7);
+
+  if (!fecha || !expediente || !tipoId){ 
+    toast("Completa los campos obligatorios","warning"); 
+    return; 
+  }
+
+  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente)){
+    document.getElementById('expedienteError').textContent = 'Este expediente ya existe este mes para ti.';
+    return;
+  } else {
+    document.getElementById('expedienteError').textContent = '';
+  }
+
+  const tipo = tiposEscritos.find(t=>t.id===tipoId);
+  if (!tipo){ 
+    toast("Tipo inválido","error"); 
+    return; 
+  }
+
+  const entry = {
+    id: Date.now().toString(),
+    usuario: currentUserData?.nombre || currentUser.name || myEmail,
+    email: myEmail,
+    fecha, expediente, tipoId,
+    puntos: tipo.puntuacion,
+    comentario
+  };
+
+  try{
+    showLoading(true);
+    await addRow(EXCEL.tables.Entradas, [
+      entry.id, entry.usuario, entry.email, entry.fecha, 
+      entry.expediente, entry.tipoId, entry.puntos, entry.comentario
+    ]);
+    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
+    entries.push(entry);
+
+    toast("Entrada registrada","success");
+    document.getElementById('registerForm').reset();
+    document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('puntosPreview').textContent = '-';
+    loadDashboard();
+  }catch(err){
+    console.error(err); 
+    toast("Error al guardar","error");
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+window.editEntry = function(id){
+  const e = entries.find(x=>x.id===id); 
+  if (!e) return;
+  const myEmail = currentUser.username.toLowerCase();
+  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  document.getElementById('editId').value = e.id;
+  document.getElementById('editFecha').value = e.fecha;
+  document.getElementById('editExpediente').value = e.expediente;
+  document.getElementById('editTipoEscrito').value = e.tipoId;
+  document.getElementById('editComentario').value = e.comentario || '';
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+async function saveEdit(){
+  const id = document.getElementById('editId').value;
+  const fecha = document.getElementById('editFecha').value;
+  const expediente = document.getElementById('editExpediente').value.trim();
+  const tipoId = document.getElementById('editTipoEscrito').value;
+  const comentario = document.getElementById('editComentario').value.trim();
+
+  const idx = entries.findIndex(e=>e.id===id); 
+  if (idx<0) return;
+  const myEmail = entries[idx].email;
+  const yyyyMM = fecha.slice(0,7);
+
+  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente, id)){
+    toast("Expediente duplicado para ese mes","warning"); 
+    return;
+  }
+  const tipo = tiposEscritos.find(t=>t.id===tipoId); 
+  if (!tipo){ 
+    toast("Tipo inválido","error"); 
+    return; 
+  }
+
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Entradas.get(id);
+    const rowValues = [
+      id, entries[idx].usuario, myEmail, fecha, 
+      expediente, tipoId, tipo.puntuacion, comentario
+    ];
+    await replaceRow(EXCEL.tables.Entradas, rowIndex, rowValues);
+    entries[idx] = { 
+      ...entries[idx], 
+      fecha, expediente, tipoId, 
+      puntos: tipo.puntuacion, comentario 
+    };
+    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+    toast("Entrada actualizada","success");
+    if (document.getElementById('historySection').style.display!=="none") {
+      loadHistory(); 
+    } else {
+      loadDashboard();
+    }
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al actualizar","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+window.deleteEntry = async function(id){
+  const e = entries.find(x=>x.id===id); 
+  if (!e) return;
+  const myEmail = currentUser.username.toLowerCase();
+  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  if (!confirm("¿Eliminar entrada?")) return;
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Entradas.get(id);
+    await deleteRow(EXCEL.tables.Entradas, rowIndex);
+    entries = entries.filter(x=>x.id!==id);
+    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
+    toast("Entrada eliminada","success");
+    if (document.getElementById('historySection').style.display!=="none") {
+      loadHistory(); 
+    } else {
+      loadDashboard();
+    }
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al eliminar","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+async function refreshRowIndex(tableName, map){
+  map.clear();
+  const rows = await getTableRows(tableName);
+  rows.forEach(r=>{
+    const id = String(r.values[0][0]||"");
+    if (id) map.set(id, r.index);
+  });
+}
+
+/* ==== Supervisor ==== */
+function loadSupervisorDashboard(){
+  const yyyyMM = document.getElementById('supervisorMonth').value;
+  const selectedEmail = document.getElementById('supervisorUser').value;
+  const tipoMap = getTipoMap();
+
+  const statsMap = new Map();
+  users.forEach(u=> statsMap.set(u.email, { 
+    nombre:u.nombre, email:u.email, rol:u.rol, sede:u.sede, 
+    puntos:0, entradas:0, dias:0, porcentaje:0 
+  }));
+
+  const monthEntries = entries.filter(e=> 
+    e.fecha.startsWith(yyyyMM) && (!selectedEmail || e.email===selectedEmail)
+  );
+  monthEntries.forEach(e=>{
+    const st = statsMap.get(e.email);
+    if (st){ 
+      st.puntos += (e.puntos || tipoMap.get(e.tipoId)?.puntuacion || 0); 
+      st.entradas += 1; 
+    }
+  });
+
+  statsMap.forEach((st, email)=>{
+    if (selectedEmail && email!==selectedEmail) return;
+    const user = getUserByEmail(email);
+    const dias = getWorkingDaysYYYYMM(yyyyMM, user?.sede, user?.vacaciones).length;
+    st.dias = dias;
+    const required = dias * configuracion.puntosPorDia;
+    st.porcentaje = required>0 ? (st.puntos/required*100) : 0;
+  });
+
+  const stats = [...statsMap.values()]
+    .filter(s=>!selectedEmail || s.email===selectedEmail)
+    .sort((a,b)=> b.puntos - a.puntos);
+  renderRanking(stats);
+  renderUsersManagement();
+}
+
+function renderRanking(stats){
+  const container = document.getElementById('rankingTable');
+  if (!stats.length){ 
+    container.innerHTML = '<div class="subtle text-center">Sin datos</div>'; 
+    return; 
+  }
+  let html = `<div class="table-responsive"><table class="table align-middle table-hover">
+    <thead><tr><th>Pos.</th><th>Usuario</th><th>Puntos</th><th>Entradas</th><th>% Meta</th><th>Bono</th></tr></thead><tbody>`;
+  stats.forEach((s,i)=>{
+    const pos=i+1;
+    const medal = pos===1?'<i class="fa-solid fa-trophy text-warning rank-medal"></i>': 
+                  (pos<=3?'<i class="fa-solid fa-medal text-secondary rank-medal"></i>':'');
+    const bonus = s.porcentaje>=100 ? configuracion.bonoMensual : 0;
+    html += `<tr>
+      <td>${medal} ${pos}</td>
+      <td>${esc(s.nombre)} ${s.rol==='supervisor'?'<span class="supervisor-badge">SUP</span>':''}</td>
+      <td><span class="badge bg-primary">${s.puntos.toFixed(2)}</span></td>
+      <td>${s.entradas}</td>
+      <td><div class="progress" style="width:120px">
+        <div class="progress-bar ${s.porcentaje>=100?'bg-success':'bg-warning'}" 
+             style="width:${Math.min(s.porcentaje,100)}%">${s.porcentaje.toFixed(0)}%</div>
+      </div></td>
+      <td>${fmtEUR.format(bonus)}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+  container.innerHTML = html;
+}
+
+function renderUsersManagement(){
+  const tbody = document.getElementById('usersManagementTable');
+  tbody.innerHTML = users.map(u=>
+    `<tr>
+      <td>${esc(u.nombre)}</td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.sede||'-')}</td>
+      <td><span class="badge ${u.rol==='supervisor'?'bg-warning':'bg-secondary'}">${u.rol}</span></td>
+      <td>${u.vacaciones ? u.vacaciones.split(',').filter(Boolean).length : 0} días</td>
+      <td><button class="btn btn-sm btn-primary" onclick="editUser('${u.id}')">
+        <i class="fa-solid fa-pen"></i> Editar</button></td>
+    </tr>`
+  ).join('');
+}
+
+window.editUser = function(userId){
+  if (currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  const u = users.find(x=>x.id===userId); 
+  if (!u) return;
+  document.getElementById('userId').value = u.id;
+  document.getElementById('userNombre').value = u.nombre;
+  document.getElementById('userEmail').value = u.email;
+  document.getElementById('userRol').value = u.rol;
+  document.getElementById('userSede').value = u.sede || '';
+  document.getElementById('userVacaciones').value = u.vacaciones || '';
+  new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+async function saveUserData(){
+  const id = document.getElementById('userId').value;
+  const uIdx = users.findIndex(u=>u.id===id); 
+  if (uIdx<0) return;
+  const rol = document.getElementById('userRol').value;
+  const sede = document.getElementById('userSede').value.trim();
+  const vacaciones = document.getElementById('userVacaciones').value.trim();
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Usuarios.get(id);
+    const u = { ...users[uIdx], rol, sede, vacaciones };
+    await replaceRow(EXCEL.tables.Usuarios, rowIndex, [
+      u.id, u.nombre, u.email, u.rol, u.sede, u.vacaciones
+    ]);
+    users[uIdx] = u;
+    bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+    toast("Usuario actualizado","success");
+    loadSupervisorDashboard();
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al actualizar usuario","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+/* ==== Tipos de escritos ==== */
+function displayEscritoTypes(){
+  const tbody = document.getElementById('escritosTypesTable');
+  tbody.innerHTML = tiposEscritos.map(t=>{
+    const inUse = entries.some(e=>e.tipoId===t.id);
+    return `<tr>
+      <td>${esc(t.id)}</td>
+      <td>${esc(t.nombre)}</td>
+      <td>${t.puntuacion}</td>
+      <td><span class="badge ${t.activo?'bg-success':'bg-danger'}">${t.activo?'Activo':'Inactivo'}</span></td>
+      <td>
+        <button class="btn btn-sm btn-primary me-1" onclick="editEscritoType('${t.id}')">
+          <i class="fa-solid fa-pen"></i></button>
+        ${!inUse ? `<button class="btn btn-sm btn-danger" onclick="deleteEscritoType('${t.id}')">
+          <i class="fa-solid fa-trash"></i></button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function showEscritoModal(id=null){
+  if (currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  const title = document.getElementById('editEscritoTitle');
+  if (id){
+    const t = tiposEscritos.find(x=>x.id===id); 
+    if (!t) return;
+    title.textContent = 'Editar tipo de escrito';
+    document.getElementById('escritoId').value = t.id;
+    document.getElementById('escritoNombre').value = t.nombre;
+    document.getElementById('escritoPuntuacion').value = t.puntuacion;
+    document.getElementById('escritoActivo').checked = t.activo;
+  } else {
+    title.textContent = 'Nuevo tipo de escrito';
+    document.getElementById('escritoId').value = '';
+    document.getElementById('escritoNombre').value = '';
+    document.getElementById('escritoPuntuacion').value = '';
+    document.getElementById('escritoActivo').checked = true;
+  }
+  new bootstrap.Modal(document.getElementById('editEscritoModal')).show();
+}
+
+window.editEscritoType = function(id){ 
+  showEscritoModal(id); 
+}
+
+async function saveEscritoType(){
+  const id = document.getElementById('escritoId').value || Date.now().toString();
+  const nombre = document.getElementById('escritoNombre').value.trim();
+  const puntuacion = parseFloat(document.getElementById('escritoPuntuacion').value);
+  const activo = document.getElementById('escritoActivo').checked;
+  if (!nombre || Number.isNaN(puntuacion)){ 
+    toast("Completa los campos","warning"); 
+    return; 
+  }
+  try{
+    showLoading(true);
+    const idx = tiposEscritos.findIndex(t=>t.id===id);
+    if (idx>=0){
+      const rowIndex = rowIndexMaps.Tipos.get(id);
+      await replaceRow(EXCEL.tables.Tipos, rowIndex, [id, nombre, puntuacion, activo]);
+      tiposEscritos[idx] = { id, nombre, puntuacion, activo };
+    } else {
+      await addRow(EXCEL.tables.Tipos, [id, nombre, puntuacion, activo]);
+      await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
+      tiposEscritos.push({ id, nombre, puntuacion, activo });
+    }
+    bootstrap.Modal.getInstance(document.getElementById('editEscritoModal')).hide();
+    toast("Tipo guardado","success");
+    populateTipoSelects();
+    displayEscritoTypes();
+  }catch(err){ 
+    console.error(err); 
+    toast("Error guardando tipo","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+window.deleteEscritoType = async function(id){
+  const t = tiposEscritos.find(x=>x.id===id); 
+  if (!t) return;
+  if (entries.some(e=>e.tipoId===id)){ 
+    toast("Está en uso, desactívalo en su lugar","warning"); 
+    return; 
+  }
+  if (!confirm(`¿Eliminar "${t.nombre}"?`)) return;
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Tipos.get(id);
+    await deleteRow(EXCEL.tables.Tipos, rowIndex);
+    tiposEscritos = tiposEscritos.filter(x=>x.id!==id);
+    await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
+    toast("Tipo eliminado","success");
+    populateTipoSelects(); 
+    displayEscritoTypes();
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al eliminar tipo","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -26,8 +473,6 @@
   .navbar{background:linear-gradient(90deg,var(--primary),#2b3b64)}
   .navbar-brand{font-weight:700}
 
-  /* Antes: padding-top y bottom */
-  /* Ahora: altura mínima para que no crezca indefinidamente y ajuste de padding */
   .main-container{
     padding-top:86px;
     padding-bottom:60px;
@@ -52,59 +497,50 @@
   .subtle{color:#6b7280}
   .supervisor-badge{background:var(--warning);color:#fff;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-left:6px}
 
-  /* Login full-screen, centrado y sin depender del flujo del documento */
-.login-wrap{
-  position: fixed;
-  inset: 0;
-  min-height: 100svh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg,var(--primary),#3a4f86);
-  z-index: 1060;
-}
+  .login-wrap{
+    position: fixed;
+    inset: 0;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg,var(--primary),#3a4f86);
+    z-index: 1060;
+  }
 
-  /* Nuevo: limitar altura del detalle por día para evitar desborde */
   #dailyStatus {
     max-height: 160px;
     overflow: auto;
     padding-right: 4px;
   }
   
-/* Opcional: que el row no colapse y alinee bien */
-.chart-card .row{
-  align-items: stretch;
-}
-/* Tarjeta de login: compacta, con sombra y animación */
-.login-card{
-  width: min(420px, 92vw);
-  padding: 28px 26px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 18px 48px rgba(0,0,0,.22);
-  border: 1px solid rgba(255,255,255,.25);
-  animation: pop .25s ease-out;
-}
-.login-card .btn{
-  padding: .9rem 1rem;
-  font-weight: 700;
-  letter-spacing: .2px;
-}
-@keyframes pop{ from{ transform: translateY(6px) scale(.98); opacity:.0 } to{ transform:none; opacity:1 } }
+  .chart-card .row{
+    align-items: stretch;
+  }
 
-/* Tabs en pastilla (ya usas .pill-tabs en la navbar) */
-.pill-tabs .nav-link{ border-radius: 999px; }
+  .login-card{
+    width: min(420px, 92vw);
+    padding: 28px 26px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.22);
+    border: 1px solid rgba(255,255,255,.25);
+    animation: pop .25s ease-out;
+  }
+  .login-card .btn{
+    padding: .9rem 1rem;
+    font-weight: 700;
+    letter-spacing: .2px;
+  }
+  @keyframes pop{ from{ transform: translateY(6px) scale(.98); opacity:.0 } to{ transform:none; opacity:1 } }
 
-/* Layout de charts pro: alturas controladas */
-.chart-wrap{ height: 280px; }
-.doughnut-wrap{ height: 260px; }
-
-/* Canvas a 100% del contenedor (el alto lo da .chart-wrap/.doughnut-wrap) */
-#dailyPointsChart, #gaugeChart{ width:100% !important; height:100% !important; display:block; }
-
-/* (Opcional) Progreso moderno en cards ya lo tienes; mantengo */
-
-</style>
+  .pill-tabs .nav-link{ border-radius: 999px; }
+  .chart-wrap{ height: 280px; }
+  .doughnut-wrap{ height: 260px; }
+  #dailyPointsChart, #gaugeChart{ width:100% !important; height:100% !important; display:block; }
+  
+  .form-hint { font-size: 0.875rem; color: var(--danger); margin-top: 0.25rem; }
+  </style>
 </head>
 <body>
 
@@ -115,7 +551,6 @@
     <div class="mt-3 fw-semibold">Cargando…</div>
   </div>
 </div>
-
 
 <!-- Login -->
 <div id="loginScreen" class="login-wrap">
@@ -201,53 +636,53 @@
       </div>
 
       <!-- Estado moderno mejorado -->
-<div class="card mt-3 chart-card">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <div>
-      <i class="fa-solid fa-chart-line me-2" aria-hidden="true"></i>
-      <strong>Estado del mes</strong>
-    </div>
-    <div class="d-flex gap-2 align-items-center">
-      <span class="badge bg-success badge-chip" id="stateBadge" role="status">
-        En progreso
-      </span>
-    </div>
-  </div>
+      <div class="card mt-3 chart-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <i class="fa-solid fa-chart-line me-2" aria-hidden="true"></i>
+            <strong>Estado del mes</strong>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <span class="badge bg-success badge-chip" id="stateBadge" role="status">
+              En progreso
+            </span>
+          </div>
+        </div>
 
-  <!-- Progreso -->
-  <div class="card-body px-3 pb-2">
-    <div class="progress progress-modern mt-1" aria-label="Progreso hacia la meta del mes">
-      <div
-        class="progress-bar bar"
-        id="progressBar"
-        role="progressbar"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow="0"
-        aria-describedby="progressMessage"  <!-- 👈 -->
-        style="width: 0%">
-      </div>
-    </div>
-    <div class="subtle mt-2" id="progressMessage" aria-live="polite"></div>
-  </div>
+        <!-- Progreso -->
+        <div class="card-body px-3 pb-2">
+          <div class="progress progress-modern mt-1" aria-label="Progreso hacia la meta del mes">
+            <div
+              class="progress-bar bar"
+              id="progressBar"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              aria-describedby="progressMessage"
+              style="width: 0%">
+            </div>
+          </div>
+          <div class="subtle mt-2" id="progressMessage" aria-live="polite"></div>
+        </div>
 
-  <!-- Gráficos -->
-  <div class="card-body pt-0">
-    <div class="row g-3 align-items-stretch">
-      <div class="col-lg-8">
-        <div class="chart-wrap h-100">
-          <canvas id="dailyPointsChart" role="img" aria-label="Gráfico de puntos diarios"></canvas>
+        <!-- Gráficos -->
+        <div class="card-body pt-0">
+          <div class="row g-3 align-items-stretch">
+            <div class="col-lg-8">
+              <div class="chart-wrap h-100">
+                <canvas id="dailyPointsChart" role="img" aria-label="Gráfico de puntos diarios"></canvas>
+              </div>
+            </div>
+            <div class="col-lg-4 d-flex flex-column">
+              <div class="doughnut-wrap flex-grow-1 mb-2">
+                <canvas id="gaugeChart" role="img" aria-label="Indicador de progreso general"></canvas>
+              </div>
+              <div class="daychips" id="dailyStatus" role="region" aria-label="Estado de días completados"></div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="col-lg-4 d-flex flex-column">
-        <div class="doughnut-wrap flex-grow-1 mb-2">
-          <canvas id="gaugeChart" role="img" aria-label="Indicador de progreso general"></canvas>
-        </div>
-        <div class="daychips" id="dailyStatus" role="region" aria-label="Estado de días completados"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
       <!-- Últimas entradas -->
       <div class="card mt-3">
@@ -506,14 +941,14 @@ const msalConfig = {
 const loginRequest = { scopes: ["User.Read","Files.ReadWrite","Files.ReadWrite.All","Sites.ReadWrite.All"] };
 
 const EXCEL = {
-  fileId: "01WYAE7MQH7SY7HM2BD5GJO5HUP3PRFJDN", // ID del archivo XLSX en OneDrive/SharePoint
+  fileId: "01WYAE7MQH7SY7HM2BD5GJO5HUP3PRFJDN",
   tables: {
     Usuarios: "Usuarios",
     Tipos: "TiposEscritos",
     Config: "Configuracion",
     Entradas: "Entradas",
     Historial: "HistorialCambios",
-    Calendario: "Calendario" // festivos por sede
+    Calendario: "Calendario"
   }
 };
 
@@ -523,13 +958,13 @@ const EXCEL = {
 let msalInstance;
 let currentUser = null;
 let currentUserData = null;
-let entries = [];            // [{id, usuario, email, fecha, expediente, tipoId, puntos, comentario}]
-let users = [];              // [{id, nombre, email, rol, sede, vacaciones}]
-let tiposEscritos = [];      // [{id, nombre, puntuacion, activo}]
-let configuracion = {};      // {puntosPorDia, bonoMensual, fechaVigencia}
-let historialCambios = [];   // [{fecha, usuario, accion, detalle}]
-let festivos = [];           // [{fecha, sede, descripcion}]
-let rowIndexMaps = {         // id → rowIndex por tabla
+let entries = [];
+let users = [];
+let tiposEscritos = [];
+let configuracion = {};
+let historialCambios = [];
+let festivos = [];
+let rowIndexMaps = {
   Entradas: new Map(),
   Usuarios: new Map(),
   Tipos: new Map()
@@ -540,28 +975,38 @@ let dailyPointsChart, gaugeChart;
    UTIL
 ============================== */
 const fmtEUR = new Intl.NumberFormat('es-ES', { style:'currency', currency:'EUR' });
-function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
-function fromExcelSerial(n){ // sistema 1900
+
+function esc(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function fromExcelSerial(n){
   const epoch = new Date(Date.UTC(1899,11,30));
   const ms = n * 86400000;
   const d = new Date(epoch.getTime() + ms);
   return d.toISOString().slice(0,10);
 }
+
 function parseDateCell(v){
   if (!v) return "";
   if (typeof v === "number") return fromExcelSerial(v);
   if (typeof v === "string"){
     if (v.includes("T")) return v.split("T")[0];
-    if (v.includes("/")){ const [d,m,y]=v.split("/"); return ${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}; }
+    if (v.includes("/")){ 
+      const [d,m,y]=v.split("/"); 
+      return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`; 
+    }
     return v;
   }
   return String(v);
 }
+
 function showLoading(b){
   const el = document.getElementById('loading');
   el.classList.toggle('show', !!b);
   el.setAttribute('aria-busy', b ? 'true' : 'false');
 }
+
 function toast(msg,type="info"){
   const color = {success:"#22c55e",error:"#ef4444",warning:"#f59e0b",info:"#4c92ff"}[type] || "#4c92ff";
   Toastify({
@@ -569,33 +1014,28 @@ function toast(msg,type="info"){
     duration: 2500,
     gravity: "top",
     position: "right",
-    style: { background: color } // <- reemplaza backgroundColor
+    style: { background: color }
   }).showToast();
 }
 
 /* ==============================
    AUTH + GRAPH WRAPPER
 ============================== */
-
-// Inicializa MSAL y decide si muestra login o app
 function initMSAL(){
   msalInstance = new msal.PublicClientApplication(msalConfig);
 
   msalInstance.handleRedirectPromise()
     .then(async (resp) => {
       if (resp && resp.account) {
-        // Vuelta del redirect con cuenta válida
         currentUser = resp.account;
         await showMainApp();
         return;
       }
-      // Sin respuesta de login: ¿hay cuentas en caché?
       const accounts = msalInstance.getAllAccounts();
       if (accounts.length > 0) {
         currentUser = accounts[0];
         await showMainApp();
       } else {
-        // No hay sesión -> mostrar pantalla de login
         document.getElementById('loginScreen').style.display = 'block';
         document.getElementById('mainApp').style.display = 'none';
       }
@@ -603,13 +1043,11 @@ function initMSAL(){
     .catch(e => {
       console.error(e);
       toast("Error de autenticación","error");
-      // Asegura que se vea el login si hay error
       document.getElementById('loginScreen').style.display = 'block';
       document.getElementById('mainApp').style.display = 'none';
     });
 }
 
-// Lanza el flujo de login (redirect)
 async function login(){
   showLoading(true);
   try {
@@ -622,7 +1060,6 @@ async function login(){
   }
 }
 
-// Salir de la sesión
 function logout(){
   const account = currentUser || msalInstance.getAllAccounts()[0] || null;
   msalInstance.logoutRedirect({
@@ -631,18 +1068,13 @@ function logout(){
   });
 }
 
-
-// Obtiene access token (renueva en silencio o fuerza interacción si hace falta)
 async function getAccessToken(){
-  // Si aún no hay currentUser, intenta recuperar cuenta en caché
   if (!currentUser) {
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) currentUser = accounts[0];
   }
-  // Si sigue sin haber cuenta, forzar login
   if (!currentUser) {
     await login();
-    // El flujo continuará tras el redirect
     return Promise.reject(new Error("Login requerido"));
   }
 
@@ -659,12 +1091,11 @@ async function getAccessToken(){
   }
 }
 
-// Fetch contra Graph con token + backoff 429
 async function graphFetch(url, options={}){
   const token = await getAccessToken();
   const res = await fetch(url, {
     ...options,
-    headers: { ...(options.headers||{}), Authorization:Bearer ${token} }
+    headers: { ...(options.headers||{}), Authorization:`Bearer ${token}` }
   });
   if (res.status === 429){
     const wait = parseInt(res.headers.get("Retry-After")||"2",10)*1000;
@@ -673,46 +1104,52 @@ async function graphFetch(url, options={}){
   }
   if (!res.ok) {
     const txt = await res.text().catch(()=> "");
-    throw new Error(Graph error ${res.status}: ${txt});
+    throw new Error(`Graph error ${res.status}: ${txt}`);
   }
   return res;
 }
 
-// $batch helper (opcional si ya lo tenías)
 async function graphBatch(requests){
   const token = await getAccessToken();
   const res = await fetch("https://graph.microsoft.com/v1.0/$batch",{
     method:"POST",
-    headers:{ "Authorization":Bearer ${token}, "Content-Type":"application/json" },
+    headers:{ "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
     body: JSON.stringify({ requests })
   });
-  if (!res.ok) throw new Error(Batch error ${res.status});
+  if (!res.ok) throw new Error(`Batch error ${res.status}`);
   return (await res.json()).responses;
 }
 
 /* ==============================
    EXCEL TABLE HELPERS
 ============================== */
-// Obtener filas de una tabla (values)
 async function getTableRows(tableName){
-  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows;
+  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows`;
   const res = await graphFetch(url);
   const data = await res.json();
   return data.value || [];
 }
-// Añadir fila a tabla
+
 async function addRow(tableName, rowValues){
-  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/add;
-  await graphFetch(url, { method:"POST", headers:{ "Content-Type":"application/json"}, body: JSON.stringify({ values: [rowValues] }) });
+  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/add`;
+  await graphFetch(url, { 
+    method:"POST", 
+    headers:{ "Content-Type":"application/json"}, 
+    body: JSON.stringify({ values: [rowValues] }) 
+  });
 }
-// Reemplazar fila por index
+
 async function replaceRow(tableName, rowIndex, rowValues){
-  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex}/range;
-  await graphFetch(url, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ values:[rowValues] }) });
+  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex}/range`;
+  await graphFetch(url, { 
+    method:"PATCH", 
+    headers:{ "Content-Type":"application/json" }, 
+    body: JSON.stringify({ values:[rowValues] }) 
+  });
 }
-// Borrar fila por index
+
 async function deleteRow(tableName, rowIndex){
-  const url = https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex};
+  const url = `https://graph.microsoft.com/v1.0/me/drive/items/${EXCEL.fileId}/workbook/tables('${tableName}')/rows/${rowIndex}`;
   await graphFetch(url, { method:"DELETE" });
 }
 
@@ -720,115 +1157,110 @@ async function deleteRow(tableName, rowIndex){
    CARGA INICIAL ($batch)
 ============================== */
 async function loadAllData(){
-  // $batch para 6 lecturas
-  const base = /me/drive/items/${EXCEL.fileId}/workbook/tables;
+  const base = `/me/drive/items/${EXCEL.fileId}/workbook/tables`;
   const reqs = [
-    { id:"usuarios", method:"GET", url:${base}('${EXCEL.tables.Usuarios}')/rows },
-    { id:"tipos", method:"GET", url:${base}('${EXCEL.tables.Tipos}')/rows },
-    { id:"config", method:"GET", url:${base}('${EXCEL.tables.Config}')/rows },
-    { id:"entradas", method:"GET", url:${base}('${EXCEL.tables.Entradas}')/rows },
-    { id:"hist", method:"GET", url:${base}('${EXCEL.tables.Historial}')/rows },
-    { id:"cal", method:"GET", url:${base}('${EXCEL.tables.Calendario}')/rows }
+    { id:"usuarios", method:"GET", url:`${base}('${EXCEL.tables.Usuarios}')/rows` },
+    { id:"tipos", method:"GET", url:`${base}('${EXCEL.tables.Tipos}')/rows` },
+    { id:"config", method:"GET", url:`${base}('${EXCEL.tables.Config}')/rows` },
+    { id:"entradas", method:"GET", url:`${base}('${EXCEL.tables.Entradas}')/rows` },
+    { id:"hist", method:"GET", url:`${base}('${EXCEL.tables.Historial}')/rows` },
+    { id:"cal", method:"GET", url:`${base}('${EXCEL.tables.Calendario}')/rows` }
   ];
   const resps = await graphBatch(reqs);
 
-if (ENV === 'dev') {
-  console.table(resps.map(r => ({ id:r.id, status:r.status, bodyType: typeof r.body })));
-  resps.filter(r => r.status !== 200).forEach(r => {
-    try { console.error('Suberror $batch ->', r.id, r.status, typeof r.body === 'string' ? JSON.parse(r.body) : r.body); }
-    catch { console.error('Suberror $batch (raw) ->', r.id, r.status, r.body); }
-  });
-}
-
-resps.filter(r => r.status !== 200).forEach(r => {
-  try {
-    const body = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
-    console.error('Suberror $batch ->', r.id, r.status, body);
-  } catch {
-    console.error('Suberror $batch (raw) ->', r.id, r.status, r.body);
+  function readBatchBody(subresp) {
+    const body = subresp?.body;
+    if (body == null) return {};
+    if (typeof body === 'string') {
+      try { return JSON.parse(body); } catch { return { raw: body }; }
+    }
+    return body;
   }
-});
 
-// Helpers seguros para $batch
-function readBatchBody(subresp) {
-  const body = subresp?.body;
-  if (body == null) return {};
-  if (typeof body === 'string') {
-    try { return JSON.parse(body); } catch { return { raw: body }; }
-  }
-  return body; // ya es objeto
-}
-
-// Versión A: mapResp tolerante (devuelve [] si la tabla no existe)
-function mapResp(id) {
-  const r = resps.find(x => x.id === id);
-  if (!r) return []; // no vino esa subrespuesta
-  if (r.status !== 200) {
+  function mapResp(id) {
+    const r = resps.find(x => x.id === id);
+    if (!r) return [];
+    if (r.status !== 200) {
+      const body = readBatchBody(r);
+      const code = body?.error?.code || body?.code || r.status;
+      if (code === 'ItemNotFound' || String(code).includes('0x8002802B')) return [];
+      const msg  = body?.error?.message || body?.message || JSON.stringify(body);
+      throw new Error(`$batch[${id}] status=${r.status} code=${code} msg=${msg}`);
+    }
     const body = readBatchBody(r);
-    const code = body?.error?.code || body?.code || r.status;
-    // Si la tabla no existe, devolvemos array vacío en vez de romper
-    if (code === 'ItemNotFound' || String(code).includes('0x8002802B')) return [];
-    // Otros errores: sí lanzamos para enterarnos
-    const msg  = body?.error?.message || body?.message || JSON.stringify(body);
-    throw new Error($batch[${id}] status=${r.status} code=${code} msg=${msg});
+    return body?.value || [];
   }
-  const body = readBatchBody(r);
-  return body?.value || [];
-}
 
-
-
-  // Usuarios: [id,nombre,email,rol,sede,vacacionesCSV]
+  // Usuarios
   users = mapResp("usuarios").map((r,i)=>{
     const [id,nombre,email,rol,sede,vac] = r.values[0];
     if (id) rowIndexMaps.Usuarios.set(String(id), r.index);
-    return { id:String(id), nombre: nombre||"", email: (email||"").toLowerCase(), rol: rol||"usuario", sede: sede||"", vacaciones: vac||"" };
+    return { 
+      id:String(id), 
+      nombre: nombre||"", 
+      email: (email||"").toLowerCase(), 
+      rol: rol||"usuario", 
+      sede: sede||"", 
+      vacaciones: vac||"" 
+    };
   });
 
-  // Tipos: [id,nombre,puntuacion,activo]
+  // Tipos
   tiposEscritos = mapResp("tipos").map(r=>{
     const [id,nombre,p,pActivo] = r.values[0];
     if (id) rowIndexMaps.Tipos.set(String(id), r.index);
-    return { id:String(id), nombre: nombre||"", puntuacion: parseFloat(p)||0, activo: String(pActivo).toLowerCase()!=="false" };
+    return { 
+      id:String(id), 
+      nombre: nombre||"", 
+      puntuacion: parseFloat(p)||0, 
+      activo: String(pActivo).toLowerCase()!=="false" 
+    };
   });
 
-  // Config: asumimos primera fila válida
-const confRows = mapResp("config");
-if (confRows.length){
-  const [ppd, bono, vig] = confRows[0].values[0];
-  configuracion = {
-    puntosPorDia: parseFloat(ppd)||2,
-    bonoMensual: parseFloat(bono)||300,
-    fechaVigencia: parseDateCell(vig) || new Date().toISOString().slice(0,10)
-  };
-} else {
-  configuracion = { puntosPorDia:2, bonoMensual:300, fechaVigencia: new Date().toISOString().slice(0,10) };
-}
+  // Config
+  const confRows = mapResp("config");
+  if (confRows.length){
+    const [ppd, bono, vig] = confRows[0].values[0];
+    configuracion = {
+      puntosPorDia: parseFloat(ppd)||2,
+      bonoMensual: parseFloat(bono)||300,
+      fechaVigencia: parseDateCell(vig) || new Date().toISOString().slice(0,10)
+    };
+  } else {
+    configuracion = { 
+      puntosPorDia:2, 
+      bonoMensual:300, 
+      fechaVigencia: new Date().toISOString().slice(0,10) 
+    };
+  }
 
-
-  // Entradas: [id,usuario,email,fecha,expediente,tipoId,puntos,comentario]
+  // Entradas
   entries = mapResp("entradas").map(r=>{
     const [id,usuario,email,fecha,expediente,tipoId,puntos,comentario] = r.values[0];
     if (id) rowIndexMaps.Entradas.set(String(id), r.index);
     return {
-      id:String(id), usuario: usuario||"", email:(email||"").toLowerCase(),
-      fecha: parseDateCell(fecha), expediente: expediente||"", tipoId: String(tipoId||""),
-      puntos: parseFloat(puntos)||0, comentario: comentario||""
+      id:String(id), 
+      usuario: usuario||"", 
+      email:(email||"").toLowerCase(),
+      fecha: parseDateCell(fecha), 
+      expediente: expediente||"", 
+      tipoId: String(tipoId||""),
+      puntos: parseFloat(puntos)||0, 
+      comentario: comentario||""
     };
   });
 
-  // Historial: [fechaISO,usuario,accion,detalle] (tolerante: si no hay tabla devuelve [])
-const histRows = mapResp("hist");
-if (histRows.length === 0) {
-  console.warn("Tabla 'HistorialCambios' no encontrada; continuamos sin historial.");
-}
-historialCambios = histRows.map(r=>{
-  const [f,u,a,d] = r.values[0];
-  return { fecha:f, usuario:u||"", accion:a||"", detalle:d||"" };
-});
+  // Historial
+  const histRows = mapResp("hist");
+  if (histRows.length === 0) {
+    console.warn("Tabla 'HistorialCambios' no encontrada; continuamos sin historial.");
+  }
+  historialCambios = histRows.map(r=>{
+    const [f,u,a,d] = r.values[0];
+    return { fecha:f, usuario:u||"", accion:a||"", detalle:d||"" };
+  });
 
-
-  // Calendario: [fecha,sede,descripcion]
+  // Calendario
   festivos = mapResp("cal").map(r=>{
     const [f,sede,desc] = r.values[0];
     const fecha = parseDateCell(f);
@@ -839,30 +1271,39 @@ historialCambios = histRows.map(r=>{
 /* ==============================
    LÓGICA NEGOCIO
 ============================== */
-function getUserByEmail(email){ return users.find(u=>u.email===email.toLowerCase()); }
-function getTipoMap(){ const m = new Map(); tiposEscritos.forEach(t=>m.set(t.id, t)); return m; }
+function getUserByEmail(email){ 
+  return users.find(u=>u.email===email.toLowerCase()); 
+}
+
+function getTipoMap(){ 
+  const m = new Map(); 
+  tiposEscritos.forEach(t=>m.set(t.id, t)); 
+  return m; 
+}
+
 function getFestivosByMonthSede(yyyyMM, sede){
   const s = (sede||"").toLowerCase();
   return festivos.filter(f=> f.fecha.startsWith(yyyyMM) && (!s || f.sede===s));
 }
+
 function getWorkingDaysYYYYMM(yyyyMM, sede, vacacionesCsv){
-  // L–V del mes menos festivos(sede) menos vacaciones del usuario
   const [Y,Mnum] = yyyyMM.split('-').map(Number);
-  const monthIndex = Mnum - 1; // 0..11
-  const lastDay = new Date(Y, monthIndex + 1, 0).getDate(); // último día del mes correcto
+  const monthIndex = Mnum - 1;
+  const lastDay = new Date(Y, monthIndex + 1, 0).getDate();
   const vacSet = new Set((vacacionesCsv||"").split(',').map(s=>s.trim()).filter(Boolean));
   const festSet = new Set(getFestivosByMonthSede(yyyyMM, sede).map(f=>f.fecha));
   const days=[];
   for(let d=1; d<=lastDay; d++){
-    const date = ${Y}-${String(Mnum).padStart(2,'0')}-${String(d).padStart(2,'0')};
-    const wd = new Date(${date}T00:00:00Z).getUTCDay();
-    if (wd===0 || wd===6) continue; // fin de semana
-    if (festSet.has(date)) continue; // festivo
-    if (vacSet.has(date)) continue; // vacaciones
+    const date = `${Y}-${String(Mnum).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const wd = new Date(`${date}T00:00:00Z`).getUTCDay();
+    if (wd===0 || wd===6) continue;
+    if (festSet.has(date)) continue;
+    if (vacSet.has(date)) continue;
     days.push(d);
   }
   return days;
 }
+
 function getRelativeTodayDay(yyyyMM){
   const [y,m] = yyyyMM.split('-').map(Number);
   const now = new Date();
@@ -870,23 +1311,31 @@ function getRelativeTodayDay(yyyyMM){
   if (y===ny && m===nm) return now.getDate();
   return null;
 }
-function monthOf(dateStr){ return dateStr.slice(0,7); }
+
+function monthOf(dateStr){ 
+  return dateStr.slice(0,7); 
+}
 
 /* ==============================
    UI RENDER
 ============================== */
 function populateTipoSelects(){
   const actives = tiposEscritos.filter(t=>t.activo);
-  const selects = [document.getElementById('tipoEscrito'), document.getElementById('editTipoEscrito'), document.getElementById('filterType')];
+  const selects = [
+    document.getElementById('tipoEscrito'), 
+    document.getElementById('editTipoEscrito'), 
+    document.getElementById('filterType')
+  ];
   selects.forEach((sel,i)=>{
     if (!sel) return;
     sel.innerHTML = i===2 ? '<option value="">Todos</option>' : '<option value="">Seleccione un tipo…</option>';
     actives.forEach(t=>{
-      const opt = new Option(${t.nombre} (${t.puntuacion} pts), t.id);
-      sel.add(opt.cloneNode(true));
+      const opt = new Option(`${t.nombre} (${t.puntuacion} pts)`, t.id);
+      sel.add(opt);
     });
   });
 }
+
 function populateUsersForSupervisor(){
   const sel = document.getElementById('supervisorUser');
   const sel2 = document.getElementById('exportUser');
@@ -898,14 +1347,14 @@ function populateUsersForSupervisor(){
     sel2.add(new Option(u.nombre, u.email));
   });
 }
+
 function updatePointsPreview(){
   const id = document.getElementById('tipoEscrito').value;
   const t = tiposEscritos.find(x=>x.id===id);
-  document.getElementById('puntosPreview').textContent = t ? ${t.puntuacion} puntos : '-';
+  document.getElementById('puntosPreview').textContent = t ? `${t.puntuacion} puntos` : '-';
 }
 
 /* ==== Gráficos ==== */
-// Texto centrado dentro del doughnut (Chart.js v4)
 const centerText = {
   id: 'centerText',
   afterDraw(chart, args, opts){
@@ -930,7 +1379,6 @@ function initCharts(){
   if (dailyPointsChart) dailyPointsChart.destroy();
   if (gaugeChart) gaugeChart.destroy();
 
-  // Gradiente suave para barras
   const grad = ctxDaily.createLinearGradient(0,0,0,280);
   grad.addColorStop(0,'rgba(76,146,255,.55)');
   grad.addColorStop(1,'rgba(76,146,255,.18)');
@@ -970,7 +1418,7 @@ function initCharts(){
           callbacks:{
             label(ctx){
               const v = ctx.parsed.y ?? 0;
-              return ${ctx.dataset.label}: ${v.toFixed(2)} pts;
+              return `${ctx.dataset.label}: ${v.toFixed(2)} pts`;
             }
           }
         }
@@ -998,22 +1446,21 @@ function initCharts(){
       plugins:{
         legend:{ display:false },
         tooltip:{ enabled:false },
-        centerText:{ text:'0%' } // <- lo actualizamos en renderGauge
+        centerText:{ text:'0%' }
       }
     }
   });
 }
+
 function renderGauge(percentage){
   const val = Math.max(0, Math.min(100, percentage));
   gaugeChart.data.datasets[0].data = [val, 100 - val];
-  gaugeChart.options.plugins.centerText.text = ${val.toFixed(0)}%;
+  gaugeChart.options.plugins.centerText.text = `${val.toFixed(0)}%`;
   gaugeChart.update('none');
 
-  // Accesibilidad: describir el valor actual en el canvas
   const gc = document.getElementById('gaugeChart');
-  gc.setAttribute('aria-label', Indicador de progreso general: ${val.toFixed(0)}%);
+  gc.setAttribute('aria-label', `Indicador de progreso general: ${val.toFixed(0)}%`);
 }
-
 
 /* ==== Dashboard ==== */
 function loadDashboard(){
@@ -1038,44 +1485,40 @@ function loadDashboard(){
   // KPIs
   document.getElementById('monthPoints').textContent = totalPoints.toFixed(2);
   document.getElementById('workDays').textContent = workDays.length;
-  document.getElementById('goalPercentage').textContent = ${perc.toFixed(1)}%;
+  document.getElementById('goalPercentage').textContent = `${perc.toFixed(1)}%`;
   document.getElementById('monthlyBonus').textContent = fmtEUR.format(bonus);
 
   // Estado
-const bar = document.getElementById('progressBar');
-const val = Math.max(0, Math.min(100, Math.round(perc))); // valor seguro 0–100
-bar.style.width = ${val}%;
-bar.setAttribute('aria-valuenow', String(val));
-bar.setAttribute('aria-valuetext', ${val}% de la meta del mes);
+  const bar = document.getElementById('progressBar');
+  const val = Math.max(0, Math.min(100, Math.round(perc)));
+  bar.style.width = `${val}%`;
+  bar.setAttribute('aria-valuenow', String(val));
+  bar.setAttribute('aria-valuetext', `${val}% de la meta del mes`);
 
-const badge = document.getElementById('stateBadge');
-if (val >= 100) {
-  badge.textContent = 'Meta alcanzada';
-  badge.className = 'badge badge-chip bg-success';
-  document.getElementById('progressMessage').textContent =
-    '¡Excelente! Has alcanzado la meta del mes.';
-} else if (val >= 75) {
-  badge.textContent = 'En buen camino';
-  badge.className = 'badge badge-chip bg-warning';
-  document.getElementById('progressMessage').textContent =
-    'Vas bien, un empujón final y llegas.';
-} else {
-  badge.textContent = 'Baja';
-  badge.className = 'badge badge-chip bg-danger';
-  document.getElementById('progressMessage').textContent =
-    'Aún lejos de la meta. Revisa tu planificación.';
-}
+  const badge = document.getElementById('stateBadge');
+  if (val >= 100) {
+    badge.textContent = 'Meta alcanzada';
+    badge.className = 'badge badge-chip bg-success';
+    document.getElementById('progressMessage').textContent = '¡Excelente! Has alcanzado la meta del mes.';
+  } else if (val >= 75) {
+    badge.textContent = 'En buen camino';
+    badge.className = 'badge badge-chip bg-warning';
+    document.getElementById('progressMessage').textContent = 'Vas bien, un empujón final y llegas.';
+  } else {
+    badge.textContent = 'Baja';
+    badge.className = 'badge badge-chip bg-danger';
+    document.getElementById('progressMessage').textContent = 'Aún lejos de la meta. Revisa tu planificación.';
+  }
 
   renderGauge(perc);
 
-  // Chart diario (solo días laborables para claridad)
+  // Chart diario
   const labels = workDays.map(d=>String(d));
   const data = workDays.map(d=> (dailyPoints[d]||0));
   dailyPointsChart.data.labels = labels;
-  dailyPointsChart.data.datasets[0].data = data; // barras
-  dailyPointsChart.data.datasets[1].data = labels.map(()=> configuracion.puntosPorDia); // línea meta
+  dailyPointsChart.data.datasets[0].data = data;
+  dailyPointsChart.data.datasets[1].data = labels.map(()=> configuracion.puntosPorDia);
   dailyPointsChart.update('none');
-
 
   // Estado día a día
   const todayRel = getRelativeTodayDay(yyyyMM);
@@ -1084,7 +1527,7 @@ if (val >= 100) {
     const ok = pts >= configuracion.puntosPorDia;
     const isPastOrToday = todayRel===null ? true : (d<=todayRel);
     const cls = isPastOrToday ? (ok ? 'bg-success' : 'bg-danger') : 'bg-secondary';
-    return <span class="badge ${cls} badge-chip me-1 mb-1">Día ${d}: ${pts.toFixed(2)}/${configuracion.puntosPorDia}</span>;
+    return `<span class="badge ${cls} badge-chip me-1 mb-1">Día ${d}: ${pts.toFixed(2)}/${configuracion.puntosPorDia}</span>`;
   }).join("");
   document.getElementById('dailyStatus').innerHTML = chips;
 
@@ -1092,575 +1535,13 @@ if (val >= 100) {
   const recent = myEntries.slice(-10).reverse();
   document.getElementById('recentEntries').innerHTML = recent.length ? recent.map(e=>{
     const tipo = tipoMap.get(e.tipoId);
-    return <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+    return `<div class="d-flex justify-content-between align-items-center p-2 border-bottom">
       <div>
         <strong>${esc(tipo?.nombre || e.tipoId)}</strong><br>
         <small class="subtle">${esc(e.expediente)} — ${esc(e.fecha)}</small>
-        ${e.comentario ? <br><small>${esc(e.comentario)}</small>:""}
+        ${e.comentario ? `<br><small>${esc(e.comentario)}</small>`:""}
       </div>
       <span class="badge bg-success">${(e.puntos || tipo?.puntuacion || 0)} pts</span>
-    </div>;
+    </div>`;
   }).join("") : '<div class="subtle text-center">Sin registros este mes</div>';
 }
-
-/* ==== Historial ==== */
-function loadHistory(){
-  const myEmail = currentUser.username.toLowerCase();
-  const tipoMap = getTipoMap();
-  const myEntries = entries.filter(e=> e.email===myEmail);
-  renderHistoryTable(myEntries, tipoMap);
-}
-function renderHistoryTable(arr, tipoMap){
-  if (!Array.isArray(arr)) return;
-  const tbody = document.getElementById('historyTableBody');
-  if (!arr.length){ tbody.innerHTML = <tr><td colspan="6" class="text-center subtle">No hay entradas</td></tr>; return; }
-  const sorted = [...arr].sort((a,b)=> b.fecha.localeCompare(a.fecha));
-  tbody.innerHTML = sorted.map(e=>{
-    const tipo = tipoMap.get(e.tipoId);
-    return <tr>
-      <td>${esc(e.fecha)}</td>
-      <td>${esc(e.expediente)}</td>
-      <td>${esc(tipo?.nombre || e.tipoId)}</td>
-      <td><span class="badge bg-primary">${(e.puntos || tipo?.puntuacion || 0)}</span></td>
-      <td>${e.comentario ? esc(e.comentario) : '-'}</td>
-      <td>
-        <button class="btn btn-sm btn-primary me-1" onclick="editEntry('${e.id}')"><i class="fa-solid fa-pen"></i></button>
-        <button class="btn btn-sm btn-danger" onclick="deleteEntry('${e.id}')"><i class="fa-solid fa-trash"></i></button>
-      </td>
-    </tr>;
-  }).join("");
-}
-function applyFilters(){
-  const myEmail = currentUser.username.toLowerCase();
-  const tipoMap = getTipoMap();
-  const df = document.getElementById('filterDateFrom').value;
-  const dt = document.getElementById('filterDateTo').value;
-  const typeId = document.getElementById('filterType').value;
-  let filtered = entries.filter(e=> e.email===myEmail);
-  if (df) filtered = filtered.filter(e=> e.fecha >= df);
-  if (dt) filtered = filtered.filter(e=> e.fecha <= dt);
-  if (typeId) filtered = filtered.filter(e=> e.tipoId === typeId);
-  renderHistoryTable(filtered, tipoMap);
-}
-
-/* ==== Registro / Editar / Eliminar ==== */
-function isExpedienteDuplicateForUserMonth(email, yyyyMM, expediente, ignoreEntryId=null){
-  return entries.some(e =>
-    e.email===email.toLowerCase() &&
-    e.fecha.startsWith(yyyyMM) &&
-    e.expediente===expediente &&
-    e.id!==ignoreEntryId
-  );
-}
-
-async function handleRegister(e){
-  e.preventDefault();
-  const fecha = document.getElementById('fecha').value;
-  const expediente = document.getElementById('expediente').value.trim();
-  const tipoId = document.getElementById('tipoEscrito').value;
-  const comentario = document.getElementById('comentario').value.trim();
-
-  const myEmail = currentUser.username.toLowerCase();
-  const yyyyMM = fecha.slice(0,7);
-
-  if (!fecha || !expediente || !tipoId){ toast("Completa los campos obligatorios","warning"); return; }
-
-  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente)){
-    document.getElementById('expedienteError').textContent = 'Este expediente ya existe este mes para ti.';
-    return;
-  } else {
-    document.getElementById('expedienteError').textContent = '';
-  }
-
-  const tipo = tiposEscritos.find(t=>t.id===tipoId);
-  if (!tipo){ toast("Tipo inválido","error"); return; }
-
-  const entry = {
-    id: Date.now().toString(),
-    usuario: currentUserData?.nombre || currentUser.name || myEmail,
-    email: myEmail,
-    fecha, expediente, tipoId,
-    puntos: tipo.puntuacion,
-    comentario
-  };
-
-  try{
-    showLoading(true);
-    await addRow(EXCEL.tables.Entradas, [entry.id, entry.usuario, entry.email, entry.fecha, entry.expediente, entry.tipoId, entry.puntos, entry.comentario]);
-    // actualizar mapa con index nuevo → recargar índices de la tabla entradas
-    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
-    entries.push(entry);
-
-    toast("Entrada registrada","success");
-    document.getElementById('registerForm').reset();
-    document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
-    document.getElementById('puntosPreview').textContent = '-';
-    loadDashboard();
-  }catch(err){
-    console.error(err); toast("Error al guardar","error");
-  }finally{ showLoading(false); }
-}
-
-function editEntry(id){
-  const e = entries.find(x=>x.id===id); if (!e) return;
-  const myEmail = currentUser.username.toLowerCase();
-  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ toast("Sin permisos","error"); return; }
-  document.getElementById('editId').value = e.id;
-  document.getElementById('editFecha').value = e.fecha;
-  document.getElementById('editExpediente').value = e.expediente;
-  document.getElementById('editTipoEscrito').value = e.tipoId;
-  document.getElementById('editComentario').value = e.comentario || '';
-  new bootstrap.Modal(document.getElementById('editModal')).show();
-}
-async function saveEdit(){
-  const id = document.getElementById('editId').value;
-  const fecha = document.getElementById('editFecha').value;
-  const expediente = document.getElementById('editExpediente').value.trim();
-  const tipoId = document.getElementById('editTipoEscrito').value;
-  const comentario = document.getElementById('editComentario').value.trim();
-
-  const idx = entries.findIndex(e=>e.id===id); if (idx<0) return;
-  const myEmail = entries[idx].email;
-  const yyyyMM = fecha.slice(0,7);
-
-  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente, id)){
-    toast("Expediente duplicado para ese mes","warning"); return;
-  }
-  const tipo = tiposEscritos.find(t=>t.id===tipoId); if (!tipo){ toast("Tipo inválido","error"); return; }
-
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Entradas.get(id);
-    const rowValues = [id, entries[idx].usuario, myEmail, fecha, expediente, tipoId, tipo.puntuacion, comentario];
-    await replaceRow(EXCEL.tables.Entradas, rowIndex, rowValues);
-    entries[idx] = { ...entries[idx], fecha, expediente, tipoId, puntos: tipo.puntuacion, comentario };
-    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
-    toast("Entrada actualizada","success");
-    // refrescar vista
-    if (document.getElementById('historySection').style.display!=="none") loadHistory(); else loadDashboard();
-  }catch(err){ console.error(err); toast("Error al actualizar","error"); }
-  finally{ showLoading(false); }
-}
-async function deleteEntry(id){
-  const e = entries.find(x=>x.id===id); if (!e) return;
-  const myEmail = currentUser.username.toLowerCase();
-  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ toast("Sin permisos","error"); return; }
-  if (!confirm("¿Eliminar entrada?")) return;
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Entradas.get(id);
-    await deleteRow(EXCEL.tables.Entradas, rowIndex);
-    entries = entries.filter(x=>x.id!==id);
-    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
-    toast("Entrada eliminada","success");
-    if (document.getElementById('historySection').style.display!=="none") loadHistory(); else loadDashboard();
-  }catch(err){ console.error(err); toast("Error al eliminar","error"); }
-  finally{ showLoading(false); }
-}
-
-/* Releer índices de una tabla para reconstruir mapa id→rowIndex (tras add/delete) */
-async function refreshRowIndex(tableName, map){
-  map.clear();
-  const rows = await getTableRows(tableName);
-  rows.forEach(r=>{
-    const id = String(r.values[0][0]||"");
-    if (id) map.set(id, r.index);
-  });
-}
-
-/* ==== Supervisor ==== */
-function loadSupervisorDashboard(){
-  const yyyyMM = document.getElementById('supervisorMonth').value;
-  const selectedEmail = document.getElementById('supervisorUser').value;
-  const tipoMap = getTipoMap();
-
-  // Prepara stats por usuario
-  const statsMap = new Map(); // email → {nombre, rol, sede, puntos, entradas, dias, porcentaje}
-  users.forEach(u=> statsMap.set(u.email, { nombre:u.nombre, email:u.email, rol:u.rol, sede:u.sede, puntos:0, entradas:0, dias:0, porcentaje:0 }));
-
-  const monthEntries = entries.filter(e=> e.fecha.startsWith(yyyyMM) && (!selectedEmail || e.email===selectedEmail));
-  monthEntries.forEach(e=>{
-    const st = statsMap.get(e.email);
-    if (st){ st.puntos += (e.puntos || tipoMap.get(e.tipoId)?.puntuacion || 0); st.entradas += 1; }
-  });
-
-  // Días laborables y % meta por usuario
-  statsMap.forEach((st, email)=>{
-    if (selectedEmail && email!==selectedEmail) return;
-    const user = getUserByEmail(email);
-    const dias = getWorkingDaysYYYYMM(yyyyMM, user?.sede, user?.vacaciones).length;
-    st.dias = dias;
-    const required = dias * configuracion.puntosPorDia;
-    st.porcentaje = required>0 ? (st.puntos/required*100) : 0;
-  });
-
-  const stats = [...statsMap.values()].filter(s=>!selectedEmail || s.email===selectedEmail).sort((a,b)=> b.puntos - a.puntos);
-  renderRanking(stats);
-  renderUsersManagement();
-}
-function renderRanking(stats){
-  const container = document.getElementById('rankingTable');
-  if (!stats.length){ container.innerHTML = '<div class="subtle text-center">Sin datos</div>'; return; }
-  let html = <div class="table-responsive"><table class="table align-middle table-hover"><thead>
-    <tr><th>Pos.</th><th>Usuario</th><th>Puntos</th><th>Entradas</th><th>% Meta</th><th>Bono</th></tr></thead><tbody>;
-  stats.forEach((s,i)=>{
-    const pos=i+1;
-    const medal = pos===1?'<i class="fa-solid fa-trophy text-warning rank-medal"></i>': (pos<=3?'<i class="fa-solid fa-medal text-secondary rank-medal"></i>':'');
-    const bonus = s.porcentaje>=100 ? configuracion.bonoMensual : 0;
-    html += <tr>
-      <td>${medal} ${pos}</td>
-      <td>${esc(s.nombre)} ${s.rol==='supervisor'?'<span class="supervisor-badge">SUP</span>':''}</td>
-      <td><span class="badge bg-primary">${s.puntos.toFixed(2)}</span></td>
-      <td>${s.entradas}</td>
-      <td><div class="progress" style="width:120px"><div class="progress-bar ${s.porcentaje>=100?'bg-success':'bg-warning'}" style="width:${Math.min(s.porcentaje,100)}%">${s.porcentaje.toFixed(0)}%</div></div></td>
-      <td>${fmtEUR.format(bonus)}</td>
-    </tr>;
-  });
-  html += </tbody></table></div>;
-  container.innerHTML = html;
-}
-function renderUsersManagement(){
-  const tbody = document.getElementById('usersManagementTable');
-  tbody.innerHTML = users.map(u=>
-    <tr>
-      <td>${esc(u.nombre)}</td>
-      <td>${esc(u.email)}</td>
-      <td>${esc(u.sede||'-')}</td>
-      <td><span class="badge ${u.rol==='supervisor'?'bg-warning':'bg-secondary'}">${u.rol}</span></td>
-      <td>${u.vacaciones ? u.vacaciones.split(',').filter(Boolean).length : 0} días</td>
-      <td><button class="btn btn-sm btn-primary" onclick="editUser('${u.id}')"><i class="fa-solid fa-pen"></i> Editar</button></td>
-    </tr>
-  ).join('');
-}
-function editUser(userId){
-  if (currentUserData?.rol!=="supervisor"){ toast("Sin permisos","error"); return; }
-  const u = users.find(x=>x.id===userId); if (!u) return;
-  document.getElementById('userId').value = u.id;
-  document.getElementById('userNombre').value = u.nombre;
-  document.getElementById('userEmail').value = u.email;
-  document.getElementById('userRol').value = u.rol;
-  document.getElementById('userSede').value = u.sede || '';
-  document.getElementById('userVacaciones').value = u.vacaciones || '';
-  new bootstrap.Modal(document.getElementById('editUserModal')).show();
-}
-async function saveUserData(){
-  const id = document.getElementById('userId').value;
-  const uIdx = users.findIndex(u=>u.id===id); if (uIdx<0) return;
-  const rol = document.getElementById('userRol').value;
-  const sede = document.getElementById('userSede').value.trim();
-  const vacaciones = document.getElementById('userVacaciones').value.trim();
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Usuarios.get(id);
-    const u = { ...users[uIdx], rol, sede, vacaciones };
-    await replaceRow(EXCEL.tables.Usuarios, rowIndex, [u.id, u.nombre, u.email, u.rol, u.sede, u.vacaciones]);
-    users[uIdx] = u;
-    bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
-    toast("Usuario actualizado","success");
-    loadSupervisorDashboard();
-  }catch(err){ console.error(err); toast("Error al actualizar usuario","error"); }
-  finally{ showLoading(false); }
-}
-
-/* ==== Tipos de escritos ==== */
-function displayEscritoTypes(){
-  const tbody = document.getElementById('escritosTypesTable');
-  tbody.innerHTML = tiposEscritos.map(t=>{
-    const inUse = entries.some(e=>e.tipoId===t.id);
-    return <tr>
-      <td>${esc(t.id)}</td>
-      <td>${esc(t.nombre)}</td>
-      <td>${t.puntuacion}</td>
-      <td><span class="badge ${t.activo?'bg-success':'bg-danger'}">${t.activo?'Activo':'Inactivo'}</span></td>
-      <td>
-        <button class="btn btn-sm btn-primary me-1" onclick="editEscritoType('${t.id}')"><i class="fa-solid fa-pen"></i></button>
-        ${!inUse ? <button class="btn btn-sm btn-danger" onclick="deleteEscritoType('${t.id}')"><i class="fa-solid fa-trash"></i></button>:''}
-      </td>
-    </tr>;
-  }).join('');
-}
-function showEscritoModal(id=null){
-  if (currentUserData?.rol!=="supervisor"){ toast("Sin permisos","error"); return; }
-  const title = document.getElementById('editEscritoTitle');
-  if (id){
-    const t = tiposEscritos.find(x=>x.id===id); if (!t) return;
-    title.textContent = 'Editar tipo de escrito';
-    document.getElementById('escritoId').value = t.id;
-    document.getElementById('escritoNombre').value = t.nombre;
-    document.getElementById('escritoPuntuacion').value = t.puntuacion;
-    document.getElementById('escritoActivo').checked = t.activo;
-  } else {
-    title.textContent = 'Nuevo tipo de escrito';
-    document.getElementById('escritoId').value = '';
-    document.getElementById('escritoNombre').value = '';
-    document.getElementById('escritoPuntuacion').value = '';
-    document.getElementById('escritoActivo').checked = true;
-  }
-  new bootstrap.Modal(document.getElementById('editEscritoModal')).show();
-}
-function editEscritoType(id){ showEscritoModal(id); }
-async function saveEscritoType(){
-  const id = document.getElementById('escritoId').value || Date.now().toString();
-  const nombre = document.getElementById('escritoNombre').value.trim();
-  const puntuacion = parseFloat(document.getElementById('escritoPuntuacion').value);
-  const activo = document.getElementById('escritoActivo').checked;
-  if (!nombre || Number.isNaN(puntuacion)){ toast("Completa los campos","warning"); return; }
-  try{
-    showLoading(true);
-    const idx = tiposEscritos.findIndex(t=>t.id===id);
-    if (idx>=0){
-      // update
-      const rowIndex = rowIndexMaps.Tipos.get(id);
-      await replaceRow(EXCEL.tables.Tipos, rowIndex, [id, nombre, puntuacion, activo]);
-      tiposEscritos[idx] = { id, nombre, puntuacion, activo };
-    } else {
-      // add
-      await addRow(EXCEL.tables.Tipos, [id, nombre, puntuacion, activo]);
-      await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
-      tiposEscritos.push({ id, nombre, puntuacion, activo });
-    }
-    bootstrap.Modal.getInstance(document.getElementById('editEscritoModal')).hide();
-    toast("Tipo guardado","success");
-    populateTipoSelects();
-    displayEscritoTypes();
-  }catch(err){ console.error(err); toast("Error guardando tipo","error"); }
-  finally{ showLoading(false); }
-}
-async function deleteEscritoType(id){
-  const t = tiposEscritos.find(x=>x.id===id); if (!t) return;
-  if (entries.some(e=>e.tipoId===id)){ toast("Está en uso, desactívalo en su lugar","warning"); return; }
-  if (!confirm(¿Eliminar "${t.nombre}"?)) return;
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Tipos.get(id);
-    await deleteRow(EXCEL.tables.Tipos, rowIndex);
-    tiposEscritos = tiposEscritos.filter(x=>x.id!==id);
-    await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
-    toast("Tipo eliminado","success");
-    populateTipoSelects(); displayEscritoTypes();
-  }catch(err){ console.error(err); toast("Error al eliminar tipo","error"); }
-  finally{ showLoading(false); }
-}
-
-/* ==== Exportar ==== */
-function exportRankingCSV(stats, yyyyMM){
-  const rows = [
-    ['Pos','Usuario','Puntos','Entradas','% Meta','Bono (€)']
-  ];
-  stats.forEach((s,i)=>{
-    const bonus = s.porcentaje>=100 ? configuracion.bonoMensual : 0;
-    rows.push([i+1, s.nombre, s.puntos.toFixed(2), s.entradas, ${s.porcentaje.toFixed(0)}%, bonus.toFixed(2)]);
-  });
-  const csv = rows.map(r=> r.map(v => "${String(v).replace(/"/g,'""')}").join(',')).join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = ranking_${yyyyMM}.csv;
-  a.click();
-}
-function buildStatsForMonth(yyyyMM, emailFilter=""){
-  const tipoMap = getTipoMap();
-  const statsMap = new Map();
-  users.forEach(u=> statsMap.set(u.email, { nombre:u.nombre, email:u.email, rol:u.rol, sede:u.sede, puntos:0, entradas:0, dias:0, porcentaje:0 }));
-  const monthEntries = entries.filter(e=> e.fecha.startsWith(yyyyMM) && (!emailFilter || e.email===emailFilter));
-  monthEntries.forEach(e=>{
-    const st = statsMap.get(e.email); if (!st) return;
-    st.puntos += (e.puntos || tipoMap.get(e.tipoId)?.puntuacion || 0);
-    st.entradas += 1;
-  });
-  statsMap.forEach((st,email)=>{
-    if (emailFilter && email!==emailFilter){ statsMap.delete(email); return; }
-    const u = getUserByEmail(email);
-    const dias = getWorkingDaysYYYYMM(yyyyMM, u?.sede, u?.vacaciones).length;
-    st.dias = dias;
-    const req = dias * configuracion.puntosPorDia;
-    st.porcentaje = req>0 ? (st.puntos/req*100) : 0;
-  });
-  return [...statsMap.values()].sort((a,b)=> b.puntos - a.puntos);
-}
-async function exportPDFReport(yyyyMM, scope, email=""){
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit:'pt', format:'a4' });
-  const title = scope==='usuario' ? Reporte de rendimiento — ${yyyyMM} : Reporte departamento — ${yyyyMM};
-
-  doc.setFontSize(16); doc.text(title, 40, 40);
-  doc.setFontSize(11);
-
-  const stats = buildStatsForMonth(yyyyMM, scope==='usuario'? email : "");
-  const rows = stats.map((s,i)=>[
-    i+1, s.nombre, s.rol, s.sede || '-', s.entradas, s.puntos.toFixed(2),
-    ${s.porcentaje.toFixed(0)}%, (s.porcentaje>=100?configuracion.bonoMensual:0).toFixed(2)
-  ]);
-  doc.text(Meta diaria: ${configuracion.puntosPorDia} pts — Bono mensual: ${fmtEUR.format(configuracion.bonoMensual)}, 40, 62);
-  doc.autoTable({
-    startY: 80,
-    head: [['Pos','Usuario','Rol','Sede','Entradas','Puntos','% Meta','Bono (€)']],
-    body: rows,
-    theme: 'grid',
-    styles: { fontSize:10, cellPadding:4 }
-  });
-  doc.save(reporte_${scope==='usuario' ? email.replace(/@.*/,'')+'_' : ''}${yyyyMM}.pdf);
-}
-
-/* ==============================
-   NAV / EVENTOS
-============================== */
-function showSection(sec){
-  document.querySelectorAll('.content-section').forEach(s=>s.style.display='none');
-  document.getElementById(sec+'Section').style.display='block';
-  document.querySelectorAll('.nav-link[data-section]').forEach(a=>a.classList.remove('active'));
-  document.querySelector(.nav-link[data-section="${sec}"])?.classList.add('active');
-
-  if (sec==='dashboard') loadDashboard();
-  if (sec==='history') loadHistory();
-  if (sec==='supervisor') loadSupervisorDashboard();
-  if (sec==='config'){ displayEscritoTypes(); document.getElementById('puntosPorDia').value=configuracion.puntosPorDia; document.getElementById('bonoMensual').value=configuracion.bonoMensual; document.getElementById('fechaVigencia').value=configuracion.fechaVigencia; renderAuditLog();}
-}
-function renderAuditLog(){
-  const tbody = document.getElementById('auditLogTable');
-  const recent = historialCambios.slice(-40).reverse();
-  tbody.innerHTML = recent.length ? recent.map(h=>
-    <tr><td>${esc(new Date(h.fecha).toLocaleString('es-ES'))}</td><td>${esc(h.usuario)}</td><td>${esc(h.accion)}</td><td><small>${esc(h.detalle)}</small></td></tr>
-  ).join("") : <tr><td colspan="4" class="text-center subtle">Sin cambios</td></tr>;
-}
-
-/* ==============================
-   INICIO APP
-============================== */
-async function showMainApp(){
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('mainApp').style.display='block';
-  showLoading(true);
-  try{
-    // Identidad
-    currentUser = currentUser || msalInstance.getAllAccounts()[0];
-    // Datos
-    await loadAllData();
-
-    // currentUserData (auto-alta si no existe)
-    const email = (currentUser.username||"").toLowerCase();
-    currentUserData = getUserByEmail(email);
-    if (!currentUserData){
-      const newUser = { id: Date.now().toString(), nombre: currentUser.name || email.split('@')[0], email, rol:'usuario', sede:'', vacaciones:'' };
-      await addRow(EXCEL.tables.Usuarios, [newUser.id, newUser.nombre, newUser.email, newUser.rol, newUser.sede, newUser.vacaciones]);
-      await refreshRowIndex(EXCEL.tables.Usuarios, rowIndexMaps.Usuarios);
-      users.push(newUser);
-      currentUserData = newUser;
-    }
-
-    // UI inicial
-    document.getElementById('userRoleBadge').innerHTML = currentUserData.rol==='supervisor' ? '<span class="supervisor-badge">SUPERVISOR</span>' : '';
-    document.querySelectorAll('.supervisor-only').forEach(el=> el.style.display = currentUserData.rol==='supervisor' ? 'block' : 'none');
-
-    const today = new Date().toISOString().slice(0,7);
-    document.getElementById('monthSelector').value = today;
-    document.getElementById('supervisorMonth').value = today;
-    document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
-
-    populateTipoSelects();
-    populateUsersForSupervisor();
-    initCharts();
-    loadDashboard();
-
-  }catch(err){
-    console.error(err); toast("Error cargando datos","error");
-  }finally{ showLoading(false); }
-
-  // Listeners
-  document.querySelectorAll('.nav-link[data-section]').forEach(a=>{
-    a.addEventListener('click', ev=>{ ev.preventDefault(); showSection(a.dataset.section); });
-  });
-  document.getElementById('monthSelector').addEventListener('change', loadDashboard);
-  document.getElementById('registerForm').addEventListener('submit', handleRegister);
-  document.getElementById('tipoEscrito').addEventListener('change', updatePointsPreview);
-  document.getElementById('expediente').addEventListener('input', ()=>{ document.getElementById('expedienteError').textContent=''; });
-  document.getElementById('applyFilters').addEventListener('click', applyFilters);
-  document.getElementById('saveEdit').addEventListener('click', saveEdit);
-  document.getElementById('logoutButton').addEventListener('click', e=>{ e.preventDefault(); logout(); });
-
-  if (currentUserData?.rol==='supervisor'){
-    document.getElementById('supervisorFilter').addEventListener('click', loadSupervisorDashboard);
-    document.getElementById('addEscritoType').addEventListener('click', ()=>showEscritoModal());
-    document.getElementById('saveEscritoType').addEventListener('click', saveEscritoType);
-    document.getElementById('saveUser').addEventListener('click', saveUserData);
-    document.getElementById('exportRankingCsv').addEventListener('click', ()=>{
-      const yyyyMM = document.getElementById('supervisorMonth').value;
-      const emailSel = document.getElementById('supervisorUser').value;
-      const stats = buildStatsForMonth(yyyyMM, emailSel||"");
-      exportRankingCSV(stats, yyyyMM);
-    });
-
-    // Export modal
-    document.getElementById('openExportModal').addEventListener('click', ()=>{
-      document.getElementById('exportMonth').value = document.getElementById('supervisorMonth').value;
-      document.getElementById('exportScope').value = 'departamento';
-      document.getElementById('exportUserWrap').classList.add('d-none');
-      new bootstrap.Modal(document.getElementById('exportModal')).show();
-    });
-    document.getElementById('exportScope').addEventListener('change', (e)=>{
-      document.getElementById('exportUserWrap').classList.toggle('d-none', e.target.value!=='usuario');
-    });
-    document.getElementById('exportPdf').addEventListener('click', ()=>{
-      const m = document.getElementById('exportMonth').value;
-      const scope = document.getElementById('exportScope').value;
-      const u = scope==='usuario' ? document.getElementById('exportUser').value : "";
-      exportPDFReport(m, scope, u);
-    });
-    document.getElementById('exportCsv').addEventListener('click', ()=>{
-      const m = document.getElementById('exportMonth').value;
-      const scope = document.getElementById('exportScope').value;
-      const email = scope==='usuario' ? document.getElementById('exportUser').value : "";
-      const stats = buildStatsForMonth(m, email);
-      exportRankingCSV(stats, m);
-    });
-  }
-}
-
-/* ==============================
-   BOOT
-============================== */
-
-// Si es localhost, NO inicializamos MSAL (modo demo local)
-if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
-  currentUser = { name:'Usuario Demo', username:'demo@example.com' };
-  currentUserData = { id:'1', nombre:'Usuario Demo', email:'demo@example.com', rol:'supervisor', sede:'madrid', vacaciones:'' };
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('mainApp').style.display='block';
-
-  document.addEventListener('DOMContentLoaded', ()=>{
-    document.getElementById('loginButton')?.addEventListener('click', e=>{ e.preventDefault(); login(); });
-  });
-
-  (async ()=>{
-    // Datos fake mínimos para probar sin Graph:
-    tiposEscritos = [
-      {id:'1', nombre:'Solicitud', puntuacion:0.5, activo:true},
-      {id:'2', nombre:'Impugnación', puntuacion:1.5, activo:true},
-      {id:'3', nombre:'Recurso', puntuacion:2, activo:true}
-    ];
-    users = [ currentUserData ];
-    configuracion = { puntosPorDia:2, bonoMensual:300, fechaVigencia:new Date().toISOString().slice(0,10) };
-    festivos = [{ fecha: new Date().toISOString().slice(0,10), sede:'madrid', descripcion:'Festivo demo'}];
-
-    populateTipoSelects();
-    populateUsersForSupervisor();
-    initCharts();
-
-    document.getElementById('monthSelector').value = new Date().toISOString().slice(0,7);
-    document.getElementById('supervisorMonth').value = new Date().toISOString().slice(0,7);
-    document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
-
-    loadDashboard();
-  })();
-
-} else {
-  // Producción: MSAL real
-  initMSAL();
-  document.addEventListener('DOMContentLoaded', ()=>{
-    document.getElementById('loginButton')?.addEventListener('click', e=>{ e.preventDefault(); login(); });
-  });
-}
-</script>
-</body>
-</html>
-
