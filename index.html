@@ -109,12 +109,13 @@
 <body>
 
 <!-- Loading -->
-<div class="loading-spinner" id="loading">
-  <div class="text-center">
-    <div class="spinner-border text-primary" style="width:3rem;height:3rem"></div>
+<div class="loading-spinner" id="loading" aria-live="polite" aria-busy="false">
+  <div class="text-center" role="status">
+    <div class="spinner-border text-primary" style="width:3rem;height:3rem" aria-hidden="true"></div>
     <div class="mt-3 fw-semibold">Cargando…</div>
   </div>
 </div>
+
 
 <!-- Login -->
 <div id="loginScreen" class="login-wrap">
@@ -223,6 +224,7 @@
         aria-valuemin="0"
         aria-valuemax="100"
         aria-valuenow="0"
+        aria-describedby="progressMessage"  <!-- 👈 -->
         style="width: 0%">
       </div>
     </div>
@@ -555,7 +557,11 @@ function parseDateCell(v){
   }
   return String(v);
 }
-function showLoading(b){document.getElementById('loading').classList.toggle('show', !!b);}
+function showLoading(b){
+  const el = document.getElementById('loading');
+  el.classList.toggle('show', !!b);
+  el.setAttribute('aria-busy', b ? 'true' : 'false');
+}
 function toast(msg,type="info"){
   const color = {success:"#22c55e",error:"#ef4444",warning:"#f59e0b",info:"#4c92ff"}[type] || "#4c92ff";
   Toastify({
@@ -1657,6 +1663,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
