@@ -81,7 +81,39 @@
 /* Opcional: que el row no colapse y alinee bien */
 .chart-card .row{
   align-items: stretch;
-} 
+}
+/* Tarjeta de login: compacta, con sombra y animación */
+.login-card{
+  width: min(420px, 92vw);
+  padding: 28px 26px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.25);
+  animation: pop .25s ease-out;
+}
+.login-card .btn{
+  padding: .9rem 1rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+@keyframes pop{ from{ transform: translateY(6px) scale(.98); opacity:.0 } to{ transform:none; opacity:1 } }
+
+/* Tabs en pastilla (ya usas .pill-tabs en la navbar) */
+.pill-tabs .nav-link{ border-radius: 999px; }
+
+/* Layout de charts pro: alturas controladas */
+.chart-wrap{ height: 280px; }
+.doughnut-wrap{ height: 260px; }
+
+/* Canvas a 100% del contenedor (el alto lo da .chart-wrap/.doughnut-wrap) */
+#dailyPointsChart, #gaugeChart{ width:100% !important; height:100% !important; display:block; }
+
+/* Chips de días con scroll */
+.daychips{ max-height: 150px; overflow: auto; padding-right: 6px; }
+
+/* (Opcional) Progreso moderno en cards ya lo tienes; mantengo */
+
 </style>
 </head>
 <body>
@@ -177,30 +209,53 @@
         </div>
       </div>
 
-      <!-- Estado moderno -->
-      <div class="card mt-3 chart-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <div><i class="fa-solid fa-chart-line me-2"></i><strong>Estado del mes</strong></div>
-          <div class="d-flex gap-2 align-items-center">
-            <span class="badge bg-success badge-chip" id="stateBadge">En progreso</span>
-          </div>
-        </div>
-        <div class="px-3">
-          <div class="progress-modern mt-1" aria-label="Progreso hacia la meta">
-            <div class="bar" id="progressBar" style="width:0%"></div>
-          </div>
-          <div class="subtle mt-2" id="progressMessage"></div>
-        </div>
-        <div class="row g-3 mt-1">
-          <div class="col-lg-7">
-            <canvas id="dailyPointsChart"></canvas>
-          </div>
-          <div class="col-lg-5">
-            <canvas id="gaugeChart"></canvas>
-            <div class="mt-2" id="dailyStatus"></div>
-          </div>
+      <!-- Estado moderno mejorado -->
+<div class="card mt-3 chart-card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div>
+      <i class="fa-solid fa-chart-line me-2" aria-hidden="true"></i>
+      <strong>Estado del mes</strong>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      <span class="badge bg-success badge-chip" id="stateBadge" role="status">
+        En progreso
+      </span>
+    </div>
+  </div>
+
+  <!-- Progreso -->
+  <div class="card-body px-3 pb-2">
+    <div class="progress progress-modern mt-1" aria-label="Progreso hacia la meta del mes">
+      <div
+        class="progress-bar bar"
+        id="progressBar"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+        style="width: 0%">
+      </div>
+    </div>
+    <div class="subtle mt-2" id="progressMessage" aria-live="polite"></div>
+  </div>
+
+  <!-- Gráficos -->
+  <div class="card-body pt-0">
+    <div class="row g-3 align-items-stretch">
+      <div class="col-lg-8">
+        <div class="chart-wrap h-100">
+          <canvas id="dailyPointsChart" role="img" aria-label="Gráfico de puntos diarios"></canvas>
         </div>
       </div>
+      <div class="col-lg-4 d-flex flex-column">
+        <div class="doughnut-wrap flex-grow-1 mb-2">
+          <canvas id="gaugeChart" role="img" aria-label="Indicador de progreso general"></canvas>
+        </div>
+        <div class="daychips" id="dailyStatus" role="region" aria-label="Estado de días completados"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
       <!-- Últimas entradas -->
       <div class="card mt-3">
@@ -854,39 +909,109 @@ function updatePointsPreview(){
 }
 
 /* ==== Gráficos ==== */
+// Texto centrado dentro del doughnut (Chart.js v4)
+const centerText = {
+  id: 'centerText',
+  afterDraw(chart, args, opts){
+    const text = opts?.text || '';
+    if (!text) return;
+    const {ctx, chartArea:{top,bottom,left,right}} = chart;
+    ctx.save();
+    ctx.font = '600 20px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text') || '#1f2937';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, (left+right)/2, (top+bottom)/2);
+    ctx.restore();
+  }
+};
+Chart.register(centerText);
+  
 function initCharts(){
   const ctxDaily = document.getElementById('dailyPointsChart').getContext('2d');
   const ctxGauge = document.getElementById('gaugeChart').getContext('2d');
 
-  if (dailyPointsChart) { dailyPointsChart.destroy(); }
-  if (gaugeChart) { gaugeChart.destroy(); }
+  if (dailyPointsChart) dailyPointsChart.destroy();
+  if (gaugeChart) gaugeChart.destroy();
+
+  // Gradiente suave para barras
+  const grad = ctxDaily.createLinearGradient(0,0,0,280);
+  grad.addColorStop(0,'rgba(76,146,255,.55)');
+  grad.addColorStop(1,'rgba(76,146,255,.18)');
 
   dailyPointsChart = new Chart(ctxDaily,{
     type:'bar',
-    data:{ labels:[], datasets:[
-      { label:'Puntos diarios', data:[], borderWidth:1, borderRadius:6 }
-    ]},
+    data:{
+      labels:[],
+      datasets:[
+        {
+          label:'Puntos diarios',
+          data:[],
+          backgroundColor: grad,
+          borderWidth:0,
+          borderRadius:8,
+          maxBarThickness:28
+        },
+        {
+          label:'Meta diaria',
+          data:[],
+          type:'line',
+          borderColor:'rgba(239,68,68,.95)',
+          backgroundColor:'rgba(239,68,68,.08)',
+          borderWidth:2,
+          pointRadius:0,
+          tension:.35,
+          fill:false
+        }
+      ]
+    },
     options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{ label:c=> `${c.parsed.y.toFixed(2)} pts` }}},
-      scales:{ y:{ beginAtZero:true, title:{display:true, text:'Puntos'} }, x:{ title:{display:true,text:'Día'}}}
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{
+          callbacks:{
+            label(ctx){
+              const v = ctx.parsed.y ?? 0;
+              return `${ctx.dataset.label}: ${v.toFixed(2)} pts`;
+            }
+          }
+        }
+      },
+      scales:{
+        y:{ beginAtZero:true, grid:{ color:'rgba(31,41,55,.08)' } },
+        x:{ grid:{ display:false } }
+      }
     }
   });
 
   gaugeChart = new Chart(ctxGauge,{
     type:'doughnut',
-    data:{ labels:['Progreso','Pendiente'], datasets:[{ data:[0, 100], cutout:'70%' }] },
+    data:{
+      labels:['Progreso','Pendiente'],
+      datasets:[{
+        data:[0,100],
+        cutout:'72%',
+        backgroundColor:['#4c92ff','#e9eef7']
+      }]
+    },
     options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{enabled:false} }
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ enabled:false },
+        centerText:{ text:'0%' } // <- lo actualizamos en renderGauge
+      }
     }
   });
 }
-
 function renderGauge(percentage){
   const val = Math.max(0, Math.min(100, percentage));
   gaugeChart.data.datasets[0].data = [val, 100-val];
-  gaugeChart.update();
+  gaugeChart.options.plugins.centerText.text = `${val.toFixed(0)}%`;
+  gaugeChart.update('none');
 }
 
 /* ==== Dashboard ==== */
@@ -933,6 +1058,8 @@ function loadDashboard(){
   dailyPointsChart.data.labels = labels;
   dailyPointsChart.data.datasets[0].data = data;
   dailyPointsChart.update();
+  dailyPointsChart.data.datasets[1].data = labels.map(()=> configuracion.puntosPorDia);
+  dailyPointsChart.update('none');
 
   // Estado día a día
   const todayRel = getRelativeTodayDay(yyyyMM);
@@ -1520,6 +1647,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
