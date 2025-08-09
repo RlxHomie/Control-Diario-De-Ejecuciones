@@ -12,43 +12,59 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 
   <style>
-    :root{
-      --primary:#1f2a44;
-      --secondary:#4c92ff;
-      --success:#22c55e;
-      --danger:#ef4444;
-      --warning:#f59e0b;
-      --bg:#f4f7fb;
-      --text:#1f2937;
-      --card:#ffffff;
-    }
-    html,body{background:var(--bg);color:var(--text);font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial}
-    .navbar{background:linear-gradient(90deg,var(--primary),#2b3b64)}
-    .navbar-brand{font-weight:700}
-    .main-container{padding-top:86px;padding-bottom:60px}
-    .card{border:none;border-radius:14px;box-shadow:0 6px 24px rgba(20,30,50,.08);background:var(--card)}
-    .card-header{border:none;border-radius:14px 14px 0 0;background:transparent;padding:18px 20px}
-    .btn-primary{background:var(--secondary);border-color:var(--secondary)}
-    .btn-outline-primary{border-color:var(--secondary);color:var(--secondary)}
-    .btn-outline-primary:hover{background:var(--secondary);color:#fff}
-    .kpi{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#edf3ff,#f6fbff)}
-    .kpi i{font-size:22px;color:var(--secondary)}
-    .kpi .v1{font-size:24px;font-weight:800}
-    .progress-modern{height:14px;border-radius:10px;background:#e9eef7}
-    .progress-modern .bar{height:100%;border-radius:10px;background:linear-gradient(90deg,var(--secondary),#7bb1ff)}
-    .badge-chip{border-radius:999px;padding:.35rem .6rem}
-    .loading-spinner{display:none;position:fixed;inset:0;background:rgba(255,255,255,.6);z-index:1055;align-items:center;justify-content:center}
-    .loading-spinner.show{display:flex}
-    .rank-medal{font-size:18px}
-    .chart-card{padding:10px 16px 22px}
-    .subtle{color:#6b7280}
-    .supervisor-badge{background:var(--warning);color:#fff;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-left:6px}
-    /* Login */
-    .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary),#3a4f86)}
-    .login-card{max-width:420px;width:100%;padding:28px;background:#fff;border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.25)}
-    .pill-tabs .nav-link{border-radius:999px}
-    .form-hint{font-size:.85rem;color:#6b7280}
-  </style>
+  :root{
+    --primary:#1f2a44;
+    --secondary:#4c92ff;
+    --success:#22c55e;
+    --danger:#ef4444;
+    --warning:#f59e0b;
+    --bg:#f4f7fb;
+    --text:#1f2937;
+    --card:#ffffff;
+  }
+  html,body{background:var(--bg);color:var(--text);font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial}
+  .navbar{background:linear-gradient(90deg,var(--primary),#2b3b64)}
+  .navbar-brand{font-weight:700}
+
+  /* Antes: padding-top y bottom */
+  /* Ahora: altura mínima para que no crezca indefinidamente y ajuste de padding */
+  .main-container{
+    padding-top:86px;
+    padding-bottom:60px;
+    min-height:calc(100vh - 86px);
+  }
+
+  .card{border:none;border-radius:14px;box-shadow:0 6px 24px rgba(20,30,50,.08);background:var(--card)}
+  .card-header{border:none;border-radius:14px 14px 0 0;background:transparent;padding:18px 20px}
+  .btn-primary{background:var(--secondary);border-color:var(--secondary)}
+  .btn-outline-primary{border-color:var(--secondary);color:var(--secondary)}
+  .btn-outline-primary:hover{background:var(--secondary);color:#fff}
+  .kpi{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#edf3ff,#f6fbff)}
+  .kpi i{font-size:22px;color:var(--secondary)}
+  .kpi .v1{font-size:24px;font-weight:800}
+  .progress-modern{height:14px;border-radius:10px;background:#e9eef7}
+  .progress-modern .bar{height:100%;border-radius:10px;background:linear-gradient(90deg,var(--secondary),#7bb1ff)}
+  .badge-chip{border-radius:999px;padding:.35rem .6rem}
+  .loading-spinner{display:none;position:fixed;inset:0;background:rgba(255,255,255,.6);z-index:1055;align-items:center;justify-content:center}
+  .loading-spinner.show{display:flex}
+  .rank-medal{font-size:18px}
+  .chart-card{padding:10px 16px 22px}
+  .subtle{color:#6b7280}
+  .supervisor-badge{background:var(--warning);color:#fff;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-left:6px}
+
+  /* Login */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary),#3a4f86)}
+  .login-card{max-width:420px;width:100%;padding:28px;background:#fff;border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.25)}
+  .pill-tabs .nav-link{border-radius:999px}
+  .form-hint{font-size:.85rem;color:#6b7280}
+
+  /* Nuevo: limitar altura del detalle por día para evitar desborde */
+  #dailyStatus {
+    max-height: 160px;
+    overflow: auto;
+    padding-right: 4px;
+  }
+</style>
 </head>
 <body>
 
@@ -491,41 +507,108 @@ function toast(msg,type="info"){
 /* ==============================
    AUTH + GRAPH WRAPPER
 ============================== */
+
+// Inicializa MSAL y decide si muestra login o app
 function initMSAL(){
   msalInstance = new msal.PublicClientApplication(msalConfig);
-  msalInstance.handleRedirectPromise().then(handleAuthResponse).catch(e => { console.error(e); toast("Error de autenticación","error"); });
+
+  msalInstance.handleRedirectPromise()
+    .then(async (resp) => {
+      if (resp && resp.account) {
+        // Vuelta del redirect con cuenta válida
+        currentUser = resp.account;
+        await showMainApp();
+        return;
+      }
+      // Sin respuesta de login: ¿hay cuentas en caché?
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        currentUser = accounts[0];
+        await showMainApp();
+      } else {
+        // No hay sesión -> mostrar pantalla de login
+        document.getElementById('loginScreen').style.display = 'block';
+        document.getElementById('mainApp').style.display = 'none';
+      }
+    })
+    .catch(e => {
+      console.error(e);
+      toast("Error de autenticación","error");
+      // Asegura que se vea el login si hay error
+      document.getElementById('loginScreen').style.display = 'block';
+      document.getElementById('mainApp').style.display = 'none';
+    });
 }
-async function handleAuthResponse(resp){
-  if (resp) currentUser = resp.account;
-  else {
-    const accounts = msalInstance.getAllAccounts();
-    if (accounts.length) currentUser = accounts[0];
+
+// Lanza el flujo de login (redirect)
+async function login(){
+  showLoading(true);
+  try {
+    await msalInstance.loginRedirect(loginRequest);
+  } catch (err) {
+    console.error("Error en login()", err);
+    toast("Error de inicio de sesión","error");
+  } finally {
+    showLoading(false);
   }
-  if (currentUser) await showMainApp(); // obtiene tokens dentro
 }
-async function login(){ showLoading(true); await msalInstance.loginRedirect(loginRequest); }
+
+// Salir de la sesión
 function logout(){
-  msalInstance.logoutRedirect({ account: currentUser, postLogoutRedirectUri: location.origin });
-}
-async function getAccessToken(){
-  const req = { scopes: loginRequest.scopes, account: currentUser };
-  const res = await msalInstance.acquireTokenSilent(req).catch(async e=>{
-    if (e instanceof msal.InteractionRequiredAuthError) await msalInstance.acquireTokenRedirect(req);
-    else throw e;
+  const account = currentUser || msalInstance.getAllAccounts()[0] || null;
+  msalInstance.logoutRedirect({
+    account,
+    postLogoutRedirectUri: location.origin
   });
-  return res.accessToken;
 }
+
+// Obtiene access token (renueva en silencio o fuerza interacción si hace falta)
+async function getAccessToken(){
+  // Si aún no hay currentUser, intenta recuperar cuenta en caché
+  if (!currentUser) {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) currentUser = accounts[0];
+  }
+  // Si sigue sin haber cuenta, forzar login
+  if (!currentUser) {
+    await login();
+    // El flujo continuará tras el redirect
+    return Promise.reject(new Error("Login requerido"));
+  }
+
+  const req = { scopes: loginRequest.scopes, account: currentUser };
+  try {
+    const res = await msalInstance.acquireTokenSilent(req);
+    return res.accessToken;
+  } catch (e) {
+    if (e instanceof msal.InteractionRequiredAuthError) {
+      await msalInstance.acquireTokenRedirect(req);
+      return Promise.reject(new Error("Redirigiendo para consentimiento/interacción"));
+    }
+    throw e;
+  }
+}
+
+// Fetch contra Graph con token + backoff 429
 async function graphFetch(url, options={}){
   const token = await getAccessToken();
-  const res = await fetch(url, { ...options, headers: { ...(options.headers||{}), Authorization:`Bearer ${token}` }});
-  if (res.status===429){
+  const res = await fetch(url, {
+    ...options,
+    headers: { ...(options.headers||{}), Authorization:`Bearer ${token}` }
+  });
+  if (res.status === 429){
     const wait = parseInt(res.headers.get("Retry-After")||"2",10)*1000;
-    await new Promise(r=>setTimeout(r,wait));
+    await new Promise(r=>setTimeout(r, wait));
     return graphFetch(url, options);
   }
-  if (!res.ok) throw new Error(`Graph error ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const txt = await res.text().catch(()=> "");
+    throw new Error(`Graph error ${res.status}: ${txt}`);
+  }
   return res;
 }
+
+// $batch helper (opcional si ya lo tenías)
 async function graphBatch(requests){
   const token = await getAccessToken();
   const res = await fetch("https://graph.microsoft.com/v1.0/$batch",{
@@ -534,9 +617,16 @@ async function graphBatch(requests){
     body: JSON.stringify({ requests })
   });
   if (!res.ok) throw new Error(`Batch error ${res.status}`);
-  const data = await res.json();
-  return data.responses;
+  return (await res.json()).responses;
 }
+
+// Enlaza el botón de login al cargar el DOM
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('loginButton')?.addEventListener('click', e=>{
+    e.preventDefault();
+    login();
+  });
+});
 
 /* ==============================
    EXCEL TABLE HELPERS
@@ -757,6 +847,9 @@ function initCharts(){
   const ctxDaily = document.getElementById('dailyPointsChart').getContext('2d');
   const ctxGauge = document.getElementById('gaugeChart').getContext('2d');
 
+  if (dailyPointsChart) { dailyPointsChart.destroy(); }
+  if (gaugeChart) { gaugeChart.destroy(); }
+
   dailyPointsChart = new Chart(ctxDaily,{
     type:'bar',
     data:{ labels:[], datasets:[
@@ -769,7 +862,6 @@ function initCharts(){
     }
   });
 
-  // "Gauge" sencillo como doughnut
   gaugeChart = new Chart(ctxGauge,{
     type:'doughnut',
     data:{ labels:['Progreso','Pendiente'], datasets:[{ data:[0, 100], cutout:'70%' }] },
@@ -779,6 +871,7 @@ function initCharts(){
     }
   });
 }
+
 function renderGauge(percentage){
   const val = Math.max(0, Math.min(100, percentage));
   gaugeChart.data.datasets[0].data = [val, 100-val];
@@ -1403,6 +1496,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
