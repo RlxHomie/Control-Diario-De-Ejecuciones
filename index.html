@@ -416,7 +416,7 @@ const ENV = location.hostname.includes('localhost') ? 'dev' : 'prod';
 
 const msalConfig = {
   auth: {
-    clientId: "REEMPLAZA_TU_CLIENT_ID",
+    clientId: "7ef87bab-74a8-4060-83ed-870ec4bccfef",
     authority: "https://login.microsoftonline.com/TU_TENANT_ID",
     redirectUri: ENV==='dev' ? "http://localhost:5173" : "https://tu-dominio.github.io/tu-app/"
   },
@@ -425,7 +425,7 @@ const msalConfig = {
 const loginRequest = { scopes: ["User.Read","Files.ReadWrite","Files.ReadWrite.All","Sites.ReadWrite.All"] };
 
 const EXCEL = {
-  fileId: "REEMPLAZA_TU_FILE_ID", // ID del archivo XLSX en OneDrive/SharePoint
+  fileId: "01WYAE7MQH7SY7HM2BD5GJO5HUP3PRFJDN", // ID del archivo XLSX en OneDrive/SharePoint
   tables: {
     Usuarios: "Usuarios",
     Tipos: "TiposEscritos",
@@ -1342,3 +1342,4 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
