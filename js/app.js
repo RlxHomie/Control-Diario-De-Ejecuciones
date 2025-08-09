@@ -7,9 +7,9 @@ import {
   currentUser, setCurrentUser, currentUserData, setCurrentUserData,
   entries, setEntries, users, setUsers, tiposEscritos, setTiposEscritos,
   configuracion, setConfiguracion, festivos, setFestivos, historialCambios, setHistorialCambios,
-  rowIndexMaps
+  rowIndexMaps, getUserByEmail
 } from './data.js';
-import { toast, showLoading, getUserByEmail } from './utils.js';
+import { toast, showLoading } from './utils.js';
 import { initCharts } from './charts.js';
 import { loadDashboard } from './dashboard.js';
 import { bindFormEvents } from './forms.js';
