@@ -417,7 +417,7 @@ const ENV = location.hostname.includes('localhost') ? 'dev' : 'prod';
 const msalConfig = {
   auth: {
     clientId: "7ef87bab-74a8-4060-83ed-870ec4bccfef",
-    authority: "https://login.microsoftonline.com/TU_TENANT_ID",
+    authority: "https://login.microsoftonline.com/a70783e2-cf58-4e38-bfd7-b403c7c833af",
     redirectUri: ENV==='dev' ? "http://localhost:5173" : "https://tu-dominio.github.io/tu-app/"
   },
   cache: { cacheLocation:"sessionStorage", storeAuthStateInCookie:false }
@@ -1342,4 +1342,5 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
