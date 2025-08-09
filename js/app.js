@@ -1,8 +1,8 @@
 // js/app.js
 // Inicialización y coordinación general de la aplicación
 
-import { initMSAL, login, logout } from './auth.js';
-import { loadAllData } from './api.js'; // si tu api.js expone una carga $batch, úsala aquí
+import { initMSAL, login, logout, getAccounts } from './auth.js';
+import { loadAllData, addRow } from './api.js';
 import {
   currentUser, setCurrentUser, currentUserData, setCurrentUserData,
   entries, setEntries, users, setUsers, tiposEscritos, setTiposEscritos,
@@ -13,7 +13,7 @@ import { toast, showLoading, getUserByEmail } from './utils.js';
 import { initCharts } from './charts.js';
 import { loadDashboard } from './dashboard.js';
 import { bindFormEvents } from './forms.js';
-import { bindSupervisorEvents, loadSupervisorDashboard, displayEscritoTypes } from './supervisor.js';
+import { bindSupervisorEvents, loadSupervisorDashboard, displayEscritoTypes, showEscritoModal } from './supervisor.js';
 import { bindExportEvents } from './export.js';
 import { EXCEL } from './config.js';
 
@@ -89,8 +89,7 @@ async function showMainApp() {
 
   showLoading(true);
   try {
-    // Carga inicial desde Graph/Excel ($batch). Debe devolver:
-    // { users, tiposEscritos, configuracion, entries, historialCambios, festivos, rowIndexMaps }
+    // Carga inicial desde Graph/Excel ($batch).
     const initial = await loadAllData();
 
     // Volcar al store
@@ -100,10 +99,7 @@ async function showMainApp() {
     if (initial?.entries) setEntries(initial.entries);
     if (initial?.historialCambios) setHistorialCambios(initial.historialCambios);
     if (initial?.festivos) setFestivos(initial.festivos);
-    if (initial?.rowIndexMaps) {
-      // Si tu data.js ya mantiene los maps, puedes ignorar esta rama
-      Object.assign(rowIndexMaps(), initial.rowIndexMaps);
-    }
+    if (initial?.rowIndexMaps) Object.assign(rowIndexMaps(), initial.rowIndexMaps);
 
     // currentUserData (auto-alta si no existe)
     const email = (currentUser()?.username || '').toLowerCase();
@@ -115,12 +111,7 @@ async function showMainApp() {
         email,
         rol: 'usuario', sede: '', vacaciones: ''
       };
-      // Para mantener single-responsibility, delega en api.js si tienes helper;
-      // aquí usamos replaceRow/addRow directamente
-      await import('./api.js').then(({ addRow }) =>
-        addRow(EXCEL.tables.Usuarios, [newUser.id, newUser.nombre, newUser.email, newUser.rol, newUser.sede, newUser.vacaciones])
-      );
-      // Releer índices en supervisor/forms cuando se edite; aquí solo memoria
+      await addRow(EXCEL.tables.Usuarios, [newUser.id, newUser.nombre, newUser.email, newUser.rol, newUser.sede, newUser.vacaciones]);
       setUsers([...users(), newUser]);
       cud = newUser;
     }
@@ -202,23 +193,38 @@ function bindGlobalEvents() {
 }
 
 /**
+ * Autotest de integraciones clave (opcional pero útil en prod).
+ * Lanza un Toast si detecta algo crítico.
+ */
+function selfTest() {
+  const must = (cond, msg) => { if (!cond) throw new Error('[SelfTest] ' + msg); };
+  try {
+    must(typeof bootstrap !== 'undefined', 'Bootstrap no disponible');
+    must(typeof Chart !== 'undefined', 'Chart.js no disponible');
+    must(window.jspdf && (window.jspdf.jsPDF || window.jspdf.default), 'jsPDF no disponible');
+    console.info('%cSelfTest OK: librerías cargadas', 'color:#16a34a;font-weight:700');
+  } catch (err) {
+    console.error(err);
+    (window.Toastify ? Toastify({
+      text: 'Fallo de integraciones: ' + err.message, duration: 5000, gravity: 'top', position: 'right', style: { background: '#ef4444' }
+    }).showToast() : alert('Fallo de integraciones: ' + err.message));
+  }
+}
+
+/**
  * Punto de entrada de la app.
- * - En localhost: demo sin MSAL (tu auth.js puede detectarlo también)
  * - En producción: MSAL real con redirect
  */
 export async function bootstrap() {
-  // Si tu auth.js ya hace el “handleRedirectPromise”, simplemente llama initMSAL()
-  // y dentro de auth.js podrás emitir eventos cuando haya sesión.
   await initMSAL();
 
-  // Si auth.js determina que no hay sesión, muestra pantalla de login.
-  const accounts = await import('./auth.js').then(m => m.getAccounts?.() || []);
+  // ¿Hay cuenta en caché?
+  const accounts = (typeof getAccounts === 'function') ? getAccounts() : [];
   if (!accounts || (Array.isArray(accounts) && accounts.length === 0)) {
-    // dejar visible login; showMainApp se llamará al volver del redirect
+    // Mostrar login; showMainApp se llamará al volver del redirect
     document.getElementById('loginScreen')?.setAttribute('style', 'display:block');
     document.getElementById('mainApp')?.setAttribute('style', 'display:none');
   } else {
-    // Ya hay cuenta en caché
     setCurrentUser(accounts[0]);
     await showMainApp();
   }
@@ -231,11 +237,21 @@ export async function bootstrap() {
 
   // Render inicial "seguro"
   showSection('dashboard');
+
+  // Autotest rápido
+  selfTest();
 }
 
-// Auto arranque cuando el DOM esté listo (si cargas app.js como type="module")
+// Exponer helpers globales para compatibilidad con onclick inline
+import { editEntry, deleteEntry, saveEdit } from './forms.js';
+import { editUser, saveUserData, saveEscritoType, deleteEscritoType } from './supervisor.js';
+Object.assign(window, {
+  editEntry, deleteEntry, saveEdit,
+  editUser, saveUserData, saveEscritoType, deleteEscritoType
+});
+
+// Auto arranque cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
-  // Evita doble arranque si lo inicializas desde otro lugar
   if (!window.__APP_BOOTSTRAPPED__) {
     window.__APP_BOOTSTRAPPED__ = true;
     bootstrap();
