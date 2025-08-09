@@ -558,9 +558,10 @@ function logout(){
   const account = currentUser || msalInstance.getAllAccounts()[0] || null;
   msalInstance.logoutRedirect({
     account,
-    postLogoutRedirectUri: location.origin
+    postLogoutRedirectUri: msalConfig.auth.redirectUri
   });
 }
+
 
 // Obtiene access token (renueva en silencio o fuerza interacción si hace falta)
 async function getAccessToken(){
@@ -620,14 +621,6 @@ async function graphBatch(requests){
   return (await res.json()).responses;
 }
 
-// Enlaza el botón de login al cargar el DOM
-document.addEventListener('DOMContentLoaded', ()=>{
-  document.getElementById('loginButton')?.addEventListener('click', e=>{
-    e.preventDefault();
-    login();
-  });
-});
-
 /* ==============================
    EXCEL TABLE HELPERS
 ============================== */
@@ -670,14 +663,14 @@ async function loadAllData(){
   ];
   const resps = await graphBatch(reqs);
 
-  // DEBUG: ver qué subrequest falla
-console.table(
-  resps.map(r => ({
-    id: r.id,
-    status: r.status,
-    bodyType: typeof r.body
-  }))
-);
+if (ENV === 'dev') {
+  console.table(resps.map(r => ({ id:r.id, status:r.status, bodyType: typeof r.body })));
+  resps.filter(r => r.status !== 200).forEach(r => {
+    try { console.error('Suberror $batch ->', r.id, r.status, typeof r.body === 'string' ? JSON.parse(r.body) : r.body); }
+    catch { console.error('Suberror $batch (raw) ->', r.id, r.status, r.body); }
+  });
+}
+
 resps.filter(r => r.status !== 200).forEach(r => {
   try {
     const body = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
@@ -1465,17 +1458,18 @@ async function showMainApp(){
 /* ==============================
    BOOT
 ============================== */
-initMSAL();
-document.addEventListener('DOMContentLoaded', ()=>{
-  document.getElementById('loginButton')?.addEventListener('click', e=>{ e.preventDefault(); login(); });
-});
 
-// DEV local (opcional)
+// Si es localhost, NO inicializamos MSAL (modo demo local)
 if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
   currentUser = { name:'Usuario Demo', username:'demo@example.com' };
   currentUserData = { id:'1', nombre:'Usuario Demo', email:'demo@example.com', rol:'supervisor', sede:'madrid', vacaciones:'' };
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('mainApp').style.display='block';
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('loginButton')?.addEventListener('click', e=>{ e.preventDefault(); login(); });
+  });
+
   (async ()=>{
     // Datos fake mínimos para probar sin Graph:
     tiposEscritos = [
@@ -1486,16 +1480,29 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
     users = [ currentUserData ];
     configuracion = { puntosPorDia:2, bonoMensual:300, fechaVigencia:new Date().toISOString().slice(0,10) };
     festivos = [{ fecha: new Date().toISOString().slice(0,10), sede:'madrid', descripcion:'Festivo demo'}];
-    populateTipoSelects(); populateUsersForSupervisor(); initCharts();
+
+    populateTipoSelects();
+    populateUsersForSupervisor();
+    initCharts();
+
     document.getElementById('monthSelector').value = new Date().toISOString().slice(0,7);
     document.getElementById('supervisorMonth').value = new Date().toISOString().slice(0,7);
     document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
+
     loadDashboard();
   })();
+
+} else {
+  // Producción: MSAL real
+  initMSAL();
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('loginButton')?.addEventListener('click', e=>{ e.preventDefault(); login(); });
+  });
 }
 </script>
 </body>
 </html>
+
 
 
 
