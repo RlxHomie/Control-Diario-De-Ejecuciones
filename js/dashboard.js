@@ -3,19 +3,29 @@
  * @module dashboard
  */
 
-import { state, getUserByEmail, getTipoMap } from './data.js';
-import { fmtEUR, esc, getWorkingDaysYYYYMM, getRelativeTodayDay } from './utils.js';
+import {
+  currentUser,
+  currentUserData,
+  entries,
+  configuracion,
+  getUserByEmail,
+  getTipoMap,
+  getWorkingDaysYYYYMM
+} from './data.js';
+
+import { fmtEUR, esc, getRelativeTodayDay } from './utils.js';
 import { initCharts, dailyPointsChart, renderGauge } from './charts.js';
 
 /** Renderiza dashboard para el mes seleccionado. */
 export function loadDashboard() {
   const yyyyMM = document.getElementById('monthSelector').value;
   const tipoMap = getTipoMap();
-  const myEmail = state.currentUser.username.toLowerCase();
-  const myUser = getUserByEmail(myEmail) || state.currentUserData;
 
-  const myEntries = state.entries.filter(e => e.email === myEmail && e.fecha.startsWith(yyyyMM));
-  const workDays = getWorkingDaysYYYYMM(yyyyMM, state.festivos, myUser?.sede, myUser?.vacaciones);
+  const myEmail = (currentUser()?.username || '').toLowerCase();
+  const myUser = getUserByEmail(myEmail) || currentUserData();
+
+  const myEntries = entries().filter(e => e.email === myEmail && e.fecha.startsWith(yyyyMM));
+  const workDays = getWorkingDaysYYYYMM(yyyyMM, myUser?.sede, myUser?.vacaciones);
 
   const dailyPoints = {};
   myEntries.forEach(e => {
@@ -23,10 +33,11 @@ export function loadDashboard() {
     dailyPoints[day] = (dailyPoints[day] || 0) + (e.puntos || tipoMap.get(e.tipoId)?.puntuacion || 0);
   });
 
+  const cfg = configuracion();
   const totalPoints = Object.values(dailyPoints).reduce((a, b) => a + b, 0);
-  const required = workDays.length * state.configuracion.puntosPorDia;
+  const required = workDays.length * cfg.puntosPorDia;
   const perc = required > 0 ? (totalPoints / required * 100) : 0;
-  const bonus = perc >= 100 ? state.configuracion.bonoMensual : 0;
+  const bonus = perc >= 100 ? cfg.bonoMensual : 0;
 
   // KPIs
   document.getElementById('monthPoints').textContent = totalPoints.toFixed(2);
@@ -60,17 +71,17 @@ export function loadDashboard() {
   const data = workDays.map(d => (dailyPoints[d] || 0));
   dailyPointsChart.data.labels = labels;
   dailyPointsChart.data.datasets[0].data = data;
-  dailyPointsChart.data.datasets[1].data = labels.map(() => state.configuracion.puntosPorDia);
+  dailyPointsChart.data.datasets[1].data = labels.map(() => cfg.puntosPorDia);
   dailyPointsChart.update('none');
 
   // Chips día a día
   const todayRel = getRelativeTodayDay(yyyyMM);
   const chips = workDays.map(d => {
     const pts = dailyPoints[d] || 0;
-    const ok = pts >= state.configuracion.puntosPorDia;
+    const ok = pts >= cfg.puntosPorDia;
     const isPastOrToday = todayRel === null ? true : (d <= todayRel);
     const cls = isPastOrToday ? (ok ? 'bg-success' : 'bg-danger') : 'bg-secondary';
-    return `<span class="badge ${cls} badge-chip me-1 mb-1">Día ${d}: ${pts.toFixed(2)}/${state.configuracion.puntosPorDia}</span>`;
+    return `<span class="badge ${cls} badge-chip me-1 mb-1">Día ${d}: ${pts.toFixed(2)}/${cfg.puntosPorDia}</span>`;
   }).join("");
   document.getElementById('dailyStatus').innerHTML = chips;
 
