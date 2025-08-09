@@ -1,7 +1,7 @@
 // js/export.js
 // Exportaciones CSV y PDF + modal de exportación
 
-import { configuracion, users } from './data.js';
+import { configuracion } from './data.js';
 import { fmtEUR, toast } from './utils.js';
 import { buildStatsForMonth } from './supervisor.js';
 
@@ -35,12 +35,12 @@ export function exportRankingCSV(stats, yyyyMM) {
 export async function exportPDFReport(yyyyMM, scope, email = '') {
   // @ts-ignore
   const { jsPDF } = window.jspdf || {};
-  if (!jsPDF || !window.jspdf?.jsPDF || !window.jspdf?.default) {
+  if (!jsPDF && !window.jspdf?.default) {
     toast('Librería jsPDF no disponible', 'error');
     return;
   }
   // @ts-ignore
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const doc = new (window.jspdf.jsPDF || window.jspdf.default)({ unit: 'pt', format: 'a4' });
   const title = scope === 'usuario' ? `Reporte de rendimiento — ${yyyyMM}` : `Reporte departamento — ${yyyyMM}`;
 
   doc.setFontSize(16);
