@@ -479,7 +479,13 @@ function parseDateCell(v){
 function showLoading(b){document.getElementById('loading').classList.toggle('show', !!b);}
 function toast(msg,type="info"){
   const color = {success:"#22c55e",error:"#ef4444",warning:"#f59e0b",info:"#4c92ff"}[type] || "#4c92ff";
-  Toastify({text:msg, duration:2500, gravity:"top", position:"right", backgroundColor:color}).showToast();
+  Toastify({
+    text: msg,
+    duration: 2500,
+    gravity: "top",
+    position: "right",
+    style: { background: color } // <- reemplaza backgroundColor
+  }).showToast();
 }
 
 /* ==============================
@@ -574,7 +580,26 @@ async function loadAllData(){
   ];
   const resps = await graphBatch(reqs);
 
-  const mapResp = (id)=> JSON.parse(resps.find(r=>r.id===id).body)?.value || [];
+  // --- helpers seguros para $batch ---
+function readBatchBody(subresp) {
+  const body = subresp?.body;
+  if (body == null) return {};
+  if (typeof body === 'string') {
+    try { return JSON.parse(body); } catch { return {}; }
+  }
+  return body; // ya es objeto
+}
+
+function mapResp(id) {
+  const r = resps.find(x => x.id === id);
+  if (!r) throw new Error(`$batch: no se encontró respuesta con id "${id}"`);
+  const body = readBatchBody(r);
+  if (r.status !== 200) {
+    const msg = body?.error?.message || `Subrequest ${id} falló con status ${r.status}`;
+    throw new Error(msg);
+  }
+  return body?.value || [];
+}
 
   // Usuarios: [id,nombre,email,rol,sede,vacacionesCSV]
   users = mapResp("usuarios").map((r,i)=>{
@@ -635,14 +660,15 @@ function getFestivosByMonthSede(yyyyMM, sede){
 }
 function getWorkingDaysYYYYMM(yyyyMM, sede, vacacionesCsv){
   // L–V del mes menos festivos(sede) menos vacaciones del usuario
-  const [Y,M] = yyyyMM.split('-').map(Number);
-  const lastDay = new Date(Y, M, 0).getDate(); // M es "mes" 1-12 y Date(Y,M,0) funciona si pasamos M como número real de mes
+  const [Y,Mnum] = yyyyMM.split('-').map(Number);
+  const monthIndex = Mnum - 1; // 0..11
+  const lastDay = new Date(Y, monthIndex + 1, 0).getDate(); // último día del mes correcto
   const vacSet = new Set((vacacionesCsv||"").split(',').map(s=>s.trim()).filter(Boolean));
   const festSet = new Set(getFestivosByMonthSede(yyyyMM, sede).map(f=>f.fecha));
   const days=[];
   for(let d=1; d<=lastDay; d++){
-    const date = `${Y}-${String(M).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const wd = new Date(`${date}T00:00:00Z`).getUTCDay(); // 0 dom … 6 sáb
+    const date = `${Y}-${String(Mnum).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const wd = new Date(`${date}T00:00:00Z`).getUTCDay();
     if (wd===0 || wd===6) continue; // fin de semana
     if (festSet.has(date)) continue; // festivo
     if (vacSet.has(date)) continue; // vacaciones
@@ -1342,6 +1368,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
