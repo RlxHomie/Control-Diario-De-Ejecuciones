@@ -2,32 +2,18 @@
 // Manejo de formularios (registro, edición) y helpers asociados
 
 import { EXCEL } from './config.js';
-import { addRow, replaceRow, deleteRow, getTableRows } from './api.js';
+import { addRow, replaceRow, deleteRow, getTableRows, refreshRowIndex } from './api.js';
 import {
-  entries, tiposEscritos, rowIndexMaps,
-  currentUser, currentUserData, setEntries,
-  getUserByEmail // <- desde data.js (no utils)
+  entries, users, tiposEscritos, configuracion, rowIndexMaps,
+  currentUser, currentUserData,
+  setEntries, getUserByEmail
 } from './data.js';
 import {
-  esc, fmtEUR, parseDateCell, showLoading, toast
+  esc, fmtEUR, parseDateCell, showLoading, toast,
+  getWorkingDaysYYYYMM, getRelativeTodayDay, monthOf
 } from './utils.js';
 
 /** @typedef {{id:string, usuario:string, email:string, fecha:string, expediente:string, tipoId:string, puntos:number, comentario:string}} Entry */
-
-/**
- * Reconstruye el mapa id->rowIndex para una tabla de Excel.
- * Úsalo tras add/delete para mantener consistencia de índices.
- * @param {string} tableName
- * @param {Map<string, number>} map
- */
-export async function refreshRowIndex(tableName, map) {
-  map.clear();
-  const rows = await getTableRows(tableName);
-  rows.forEach(r => {
-    const id = String(r.values[0][0] || '');
-    if (id) map.set(id, r.index);
-  });
-}
 
 /**
  * Comprueba si existe expediente duplicado para el usuario/mes.
@@ -122,7 +108,7 @@ export async function handleRegister(ev) {
     const pp = document.getElementById('puntosPreview');
     if (pp) pp.textContent = '-';
 
-    // Notificar a vistas dependientes
+    // Dejar que el dashboard/historial se refresquen
     document.dispatchEvent(new CustomEvent('entries:changed'));
   } catch (err) {
     console.error(err);
@@ -147,11 +133,16 @@ export function editEntry(id) {
     return;
   }
 
-  /** @type {HTMLInputElement} */ (document.getElementById('editId')).value = e.id;
-  /** @type {HTMLInputElement} */ (document.getElementById('editFecha')).value = e.fecha;
-  /** @type {HTMLInputElement} */ (document.getElementById('editExpediente')).value = e.expediente;
-  /** @type {HTMLSelectElement} */ (document.getElementById('editTipoEscrito')).value = e.tipoId;
-  /** @type {HTMLTextAreaElement} */ (document.getElementById('editComentario')).value = e.comentario || '';
+  /** @type {HTMLInputElement} */
+  (document.getElementById('editId')).value = e.id;
+  /** @type {HTMLInputElement} */
+  (document.getElementById('editFecha')).value = e.fecha;
+  /** @type {HTMLInputElement} */
+  (document.getElementById('editExpediente')).value = e.expediente;
+  /** @type {HTMLSelectElement} */
+  (document.getElementById('editTipoEscrito')).value = e.tipoId;
+  /** @type {HTMLTextAreaElement} */
+  (document.getElementById('editComentario')).value = e.comentario || '';
 
   const modalEl = document.getElementById('editModal');
   if (modalEl) new bootstrap.Modal(modalEl).show();
@@ -240,6 +231,41 @@ export async function deleteEntry(id) {
 }
 
 /**
+ * Maneja el submit del formulario de configuración de bonos.
+ * @param {SubmitEvent} ev
+ */
+export async function handleBonusConfig(ev) {
+  ev.preventDefault();
+  
+  const puntosPorDia = parseFloat(/** @type {HTMLInputElement} */ (document.getElementById('puntosPorDia')).value);
+  const bonoMensual = parseFloat(/** @type {HTMLInputElement} */ (document.getElementById('bonoMensual')).value);
+  const fechaVigencia = /** @type {HTMLInputElement} */ (document.getElementById('fechaVigencia')).value;
+
+  if (isNaN(puntosPorDia) || isNaN(bonoMensual) || !fechaVigencia) {
+    toast('Completa todos los campos', 'warning');
+    return;
+  }
+
+  try {
+    showLoading(true);
+    // Actualizar en Excel (asumiendo que existe una fila de configuración)
+    await replaceRow(EXCEL.tables.Config, 0, [puntosPorDia, bonoMensual, fechaVigencia]);
+    
+    // Actualizar estado local
+    const { setConfiguracion } = await import('./data.js');
+    setConfiguracion({ puntosPorDia, bonoMensual, fechaVigencia });
+    
+    toast('Configuración actualizada', 'success');
+    document.dispatchEvent(new CustomEvent('config:changed'));
+  } catch (err) {
+    console.error(err);
+    toast('Error al guardar configuración', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+/**
  * Registra listeners propios del módulo de formularios.
  * Llamado desde app.js
  */
@@ -258,6 +284,9 @@ export function bindFormEvents() {
 
   const saveEditBtn = document.getElementById('saveEdit');
   if (saveEditBtn) saveEditBtn.addEventListener('click', saveEdit);
+
+  const bonusForm = document.getElementById('bonusConfigForm');
+  if (bonusForm) bonusForm.addEventListener('submit', handleBonusConfig);
 
   // Delegación segura para botones inline en tablas
   document.addEventListener('click', (ev) => {
