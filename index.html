@@ -580,14 +580,32 @@ async function loadAllData(){
   ];
   const resps = await graphBatch(reqs);
 
-  // --- helpers seguros para $batch ---
+  // DEBUG: ver qué subrequest falla
+console.table(
+  resps.map(r => ({
+    id: r.id,
+    status: r.status,
+    bodyType: typeof r.body
+  }))
+);
+// Si alguna no es 200, saca el body entero para esa id
+resps.filter(r => r.status !== 200).forEach(r => {
+  try {
+    const body = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
+    console.error('Suberror $batch ->', r.id, r.status, body);
+  } catch {
+    console.error('Suberror $batch (raw) ->', r.id, r.status, r.body);
+  }
+});
+
+
 function readBatchBody(subresp) {
   const body = subresp?.body;
   if (body == null) return {};
   if (typeof body === 'string') {
-    try { return JSON.parse(body); } catch { return {}; }
+    try { return JSON.parse(body); } catch { return { raw: body }; }
   }
-  return body; // ya es objeto
+  return body;
 }
 
 function mapResp(id) {
@@ -595,11 +613,14 @@ function mapResp(id) {
   if (!r) throw new Error(`$batch: no se encontró respuesta con id "${id}"`);
   const body = readBatchBody(r);
   if (r.status !== 200) {
-    const msg = body?.error?.message || `Subrequest ${id} falló con status ${r.status}`;
-    throw new Error(msg);
+    const gerr = body?.error;
+    const code = gerr?.code || body?.code || r.status;
+    const msg  = gerr?.message || gerr?.innerError?.message || JSON.stringify(body);
+    throw new Error(`$batch[${id}] status=${r.status} code=${code} msg=${msg}`);
   }
   return body?.value || [];
 }
+
 
   // Usuarios: [id,nombre,email,rol,sede,vacacionesCSV]
   users = mapResp("usuarios").map((r,i)=>{
@@ -1368,6 +1389,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
