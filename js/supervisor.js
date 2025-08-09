@@ -8,7 +8,9 @@ import {
   currentUserData, getUserByEmail,
   setUsers, setTiposEscritos
 } from './data.js';
-import { ... getWorkingDaysYYYYMM } from './data.js';
+import { esc, fmtEUR, showLoading, toast } from './utils.js';
+import { getWorkingDaysYYYYMM } from './data.js';
+
 
 /**
  * Calcula el ranking y métricas para un mes dado y (opcional) un email.
@@ -365,4 +367,5 @@ export function loadSupervisorDashboard() {
   renderRanking(stats);
   renderUsersManagement();
 }
+
 
