@@ -588,7 +588,6 @@ console.table(
     bodyType: typeof r.body
   }))
 );
-// Si alguna no es 200, saca el body entero para esa id
 resps.filter(r => r.status !== 200).forEach(r => {
   try {
     const body = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
@@ -598,28 +597,33 @@ resps.filter(r => r.status !== 200).forEach(r => {
   }
 });
 
-
+// Helpers seguros para $batch
 function readBatchBody(subresp) {
   const body = subresp?.body;
   if (body == null) return {};
   if (typeof body === 'string') {
     try { return JSON.parse(body); } catch { return { raw: body }; }
   }
-  return body;
+  return body; // ya es objeto
 }
 
+// Versión A: mapResp tolerante (devuelve [] si la tabla no existe)
 function mapResp(id) {
   const r = resps.find(x => x.id === id);
-  if (!r) throw new Error(`$batch: no se encontró respuesta con id "${id}"`);
-  const body = readBatchBody(r);
+  if (!r) return []; // no vino esa subrespuesta
   if (r.status !== 200) {
-    const gerr = body?.error;
-    const code = gerr?.code || body?.code || r.status;
-    const msg  = gerr?.message || gerr?.innerError?.message || JSON.stringify(body);
+    const body = readBatchBody(r);
+    const code = body?.error?.code || body?.code || r.status;
+    // Si la tabla no existe, devolvemos array vacío en vez de romper
+    if (code === 'ItemNotFound' || String(code).includes('0x8002802B')) return [];
+    // Otros errores: sí lanzamos para enterarnos
+    const msg  = body?.error?.message || body?.message || JSON.stringify(body);
     throw new Error(`$batch[${id}] status=${r.status} code=${code} msg=${msg}`);
   }
+  const body = readBatchBody(r);
   return body?.value || [];
 }
+
 
 
   // Usuarios: [id,nombre,email,rol,sede,vacacionesCSV]
@@ -637,13 +641,18 @@ function mapResp(id) {
   });
 
   // Config: asumimos primera fila válida
-  const confRows = mapResp("config");
-  if (confRows.length){
-    const [ppd, bono, vig] = confRows[0].values[0];
-    configuracion = { puntosPorDia: parseFloat(ppd)||2, bonoMensual: parseFloat(bono)||300, fechaVigencia: parseDateCell(vig)||new Date().toISOString().slice(0,10) };
-  } else {
-    configuracion = { puntosPorDia:2, bonoMensual:300, fechaVigencia: new Date().toISOString().slice(0,10) };
-  }
+const confRows = mapResp("config");
+if (confRows.length){
+  const [ppd, bono, vig] = confRows[0].values[0];
+  configuracion = {
+    puntosPorDia: parseFloat(ppd)||2,
+    bonoMensual: parseFloat(bono)||300,
+    fechaVigencia: parseDateCell(vig) || new Date().toISOString().slice(0,10)
+  };
+} else {
+  configuracion = { puntosPorDia:2, bonoMensual:300, fechaVigencia: new Date().toISOString().slice(0,10) };
+}
+
 
   // Entradas: [id,usuario,email,fecha,expediente,tipoId,puntos,comentario]
   entries = mapResp("entradas").map(r=>{
@@ -656,11 +665,16 @@ function mapResp(id) {
     };
   });
 
-  // Historial: [fechaISO,usuario,accion,detalle]
-  historialCambios = mapResp("hist").map(r=>{
-    const [f,u,a,d] = r.values[0];
-    return { fecha:f, usuario:u||"", accion:a||"", detalle:d||"" };
-  });
+  // Historial: [fechaISO,usuario,accion,detalle] (tolerante: si no hay tabla devuelve [])
+const histRows = mapResp("hist");
+if (histRows.length === 0) {
+  console.warn("Tabla 'HistorialCambios' no encontrada; continuamos sin historial.");
+}
+historialCambios = histRows.map(r=>{
+  const [f,u,a,d] = r.values[0];
+  return { fecha:f, usuario:u||"", accion:a||"", detalle:d||"" };
+});
+
 
   // Calendario: [fecha,sede,descripcion]
   festivos = mapResp("cal").map(r=>{
@@ -1389,6 +1403,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
