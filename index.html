@@ -70,14 +70,7 @@
     overflow: auto;
     padding-right: 4px;
   }
-  /* FIX: Altura controlada para los charts */
-#dailyPointsChart,
-#gaugeChart{
-  display: block;
-  width: 100% !important;
-  height: 240px !important;   /* ajusta a tu gusto */
-}
-
+  
 /* Opcional: que el row no colapse y alinee bien */
 .chart-card .row{
   align-items: stretch;
@@ -1041,14 +1034,29 @@ function loadDashboard(){
   document.getElementById('monthlyBonus').textContent = fmtEUR.format(bonus);
 
   // Estado
-  const bar = document.getElementById('progressBar');
-  bar.style.width = `${Math.min(perc,100)}%`;
-  document.getElementById('stateBadge').textContent = perc>=100 ? 'Meta alcanzada' : (perc>=75 ? 'En buen camino' : 'Baja');
-  document.getElementById('stateBadge').className = `badge badge-chip ${perc>=100?'bg-success': (perc>=75?'bg-warning':'bg-danger')}`;
+const bar = document.getElementById('progressBar');
+const val = Math.max(0, Math.min(100, Math.round(perc))); // valor seguro 0–100
+bar.style.width = `${val}%`;
+bar.setAttribute('aria-valuenow', String(val));
+bar.setAttribute('aria-valuetext', `${val}% de la meta del mes`);
+
+const badge = document.getElementById('stateBadge');
+if (val >= 100) {
+  badge.textContent = 'Meta alcanzada';
+  badge.className = 'badge badge-chip bg-success';
   document.getElementById('progressMessage').textContent =
-    perc>=100 ? '¡Excelente! Has alcanzado la meta del mes.' :
-    perc>=75 ? 'Vas bien, un empujón final y llegas.' :
-               'Aún lejos de la meta. Revisa tu planificación.';
+    '¡Excelente! Has alcanzado la meta del mes.';
+} else if (val >= 75) {
+  badge.textContent = 'En buen camino';
+  badge.className = 'badge badge-chip bg-warning';
+  document.getElementById('progressMessage').textContent =
+    'Vas bien, un empujón final y llegas.';
+} else {
+  badge.textContent = 'Baja';
+  badge.className = 'badge badge-chip bg-danger';
+  document.getElementById('progressMessage').textContent =
+    'Aún lejos de la meta. Revisa tu planificación.';
+}
 
   renderGauge(perc);
 
@@ -1056,10 +1064,10 @@ function loadDashboard(){
   const labels = workDays.map(d=>String(d));
   const data = workDays.map(d=> (dailyPoints[d]||0));
   dailyPointsChart.data.labels = labels;
-  dailyPointsChart.data.datasets[0].data = data;
-  dailyPointsChart.update();
-  dailyPointsChart.data.datasets[1].data = labels.map(()=> configuracion.puntosPorDia);
+  dailyPointsChart.data.datasets[0].data = data; // barras
+  dailyPointsChart.data.datasets[1].data = labels.map(()=> configuracion.puntosPorDia); // línea meta
   dailyPointsChart.update('none');
+
 
   // Estado día a día
   const todayRel = getRelativeTodayDay(yyyyMM);
@@ -1647,6 +1655,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
