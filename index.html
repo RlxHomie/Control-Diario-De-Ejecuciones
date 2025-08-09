@@ -52,11 +52,17 @@
   .subtle{color:#6b7280}
   .supervisor-badge{background:var(--warning);color:#fff;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-left:6px}
 
-  /* Login */
-  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary),#3a4f86)}
-  .login-card{max-width:420px;width:100%;padding:28px;background:#fff;border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.25)}
-  .pill-tabs .nav-link{border-radius:999px}
-  .form-hint{font-size:.85rem;color:#6b7280}
+  /* Login full-screen, centrado y sin depender del flujo del documento */
+.login-wrap{
+  position: fixed;
+  inset: 0;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg,var(--primary),#3a4f86);
+  z-index: 1060;
+}
 
   /* Nuevo: limitar altura del detalle por día para evitar desborde */
   #dailyStatus {
@@ -64,6 +70,18 @@
     overflow: auto;
     padding-right: 4px;
   }
+  /* FIX: Altura controlada para los charts */
+#dailyPointsChart,
+#gaugeChart{
+  display: block;
+  width: 100% !important;
+  height: 240px !important;   /* ajusta a tu gusto */
+}
+
+/* Opcional: que el row no colapse y alinee bien */
+.chart-card .row{
+  align-items: stretch;
+} 
 </style>
 </head>
 <body>
@@ -175,10 +193,10 @@
         </div>
         <div class="row g-3 mt-1">
           <div class="col-lg-7">
-            <canvas id="dailyPointsChart" height="180"></canvas>
+            <canvas id="dailyPointsChart"></canvas>
           </div>
           <div class="col-lg-5">
-            <canvas id="gaugeChart" height="180"></canvas>
+            <canvas id="gaugeChart"></canvas>
             <div class="mt-2" id="dailyStatus"></div>
           </div>
         </div>
@@ -1502,6 +1520,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
