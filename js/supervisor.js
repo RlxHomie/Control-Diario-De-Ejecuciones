@@ -277,7 +277,6 @@ export async function saveEscritoType() {
       setTiposEscritos(copy);
     } else {
       await addRow(EXCEL.tables.Tipos, [id, nombre, puntuacion, activo]);
-      // Nota: quien carga la app refresca los índices; aquí sólo aseguramos coherencia local
       const copy = [...tipos, { id, nombre, puntuacion, activo }];
       setTiposEscritos(copy);
     }
