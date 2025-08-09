@@ -1,274 +1,189 @@
-// js/forms.js
-// Manejo de formularios (registro, edición) y helpers asociados
-
-import { EXCEL } from './config.js';
-import { addRow, replaceRow, deleteRow, getTableRows } from './api.js';
-import {
-  entries, users, tiposEscritos, /* configuracion <- eliminado */,
-  rowIndexMaps, currentUser, currentUserData, setEntries
-} from './data.js';
-import {
-  esc, fmtEUR, parseDateCell, showLoading, toast,
-  getWorkingDaysYYYYMM, getRelativeTodayDay, monthOf, getUserByEmail
-} from './utils.js';
-
-/** @typedef {{id:string, usuario:string, email:string, fecha:string, expediente:string, tipoId:string, puntos:number, comentario:string}} Entry */
+// js/data.js
+// Estado centralizado de la aplicación (store) para módulos ESM
 
 /**
- * Reconstruye el mapa id->rowIndex para una tabla de Excel.
- * Úsalo tras add/delete para mantener consistencia de índices.
- * @param {string} tableName
- * @param {Map<string, number>} map
+ * @typedef {Object} User
+ * @property {string} id
+ * @property {string} nombre
+ * @property {string} email
+ * @property {"usuario"|"supervisor"} rol
+ * @property {string} [sede]
+ * @property {string} [vacaciones]  // CSV de fechas YYYY-MM-DD
  */
-export async function refreshRowIndex(tableName, map) {
-  map.clear();
-  const rows = await getTableRows(tableName);
-  rows.forEach(r => {
-    const id = String(r.values[0][0] || '');
-    if (id) map.set(id, r.index);
-  });
+
+/**
+ * @typedef {Object} TipoEscrito
+ * @property {string} id
+ * @property {string} nombre
+ * @property {number} puntuacion
+ * @property {boolean} activo
+ */
+
+/**
+ * @typedef {Object} Configuracion
+ * @property {number} puntosPorDia
+ * @property {number} bonoMensual
+ * @property {string} fechaVigencia  // YYYY-MM-DD
+ */
+
+/**
+ * @typedef {Object} Entry
+ * @property {string} id
+ * @property {string} usuario
+ * @property {string} email
+ * @property {string} fecha       // YYYY-MM-DD
+ * @property {string} expediente
+ * @property {string} tipoId
+ * @property {number} puntos
+ * @property {string} [comentario]
+ */
+
+/**
+ * @typedef {Object} HistChange
+ * @property {string} fecha       // ISO
+ * @property {string} usuario
+ * @property {string} accion
+ * @property {string} detalle
+ */
+
+/** @type {{
+ *   currentUser: any,
+ *   currentUserData: User|null,
+ *   entries: Entry[],
+ *   users: User[],
+ *   tiposEscritos: TipoEscrito[],
+ *   configuracion: Configuracion,
+ *   historialCambios: HistChange[],
+ *   festivos: {fecha:string, sede:string, descripcion:string}[],
+ *   rowIndexMaps: { Entradas: Map<string, number>, Usuarios: Map<string, number>, Tipos: Map<string, number> }
+ * }} */
+const state = {
+  currentUser: null,
+  currentUserData: null,
+  entries: [],
+  users: [],
+  tiposEscritos: [],
+  configuracion: {
+    puntosPorDia: 2,
+    bonoMensual: 300,
+    fechaVigencia: new Date().toISOString().slice(0, 10)
+  },
+  historialCambios: [],
+  festivos: [],
+  rowIndexMaps: {
+    Entradas: new Map(),
+    Usuarios: new Map(),
+    Tipos: new Map()
+  }
+};
+
+/* =========================
+   Getters
+========================= */
+
+/** @returns {any} */
+export const currentUser = () => state.currentUser;
+/** @returns {User|null} */
+export const currentUserData = () => state.currentUserData;
+/** @returns {Entry[]} */
+export const entries = () => state.entries;
+/** @returns {User[]} */
+export const users = () => state.users;
+/** @returns {TipoEscrito[]} */
+export const tiposEscritos = () => state.tiposEscritos;
+/** @returns {Configuracion} */
+export const configuracion = () => state.configuracion;
+/** @returns {HistChange[]} */
+export const historialCambios = () => state.historialCambios;
+/** @returns {{fecha:string, sede:string, descripcion:string}[]} */
+export const festivos = () => state.festivos;
+/** @returns {{ Entradas: Map<string,number>, Usuarios: Map<string,number>, Tipos: Map<string,number> }} */
+export const rowIndexMaps = () => state.rowIndexMaps;
+
+/* =========================
+   Setters (mutaciones)
+========================= */
+
+/** @param {any} u */
+export function setCurrentUser(u) {
+  state.currentUser = u;
 }
 
-/**
- * Comprueba si existe expediente duplicado para el usuario/mes.
- * @param {string} email
- * @param {string} yyyyMM
- * @param {string} expediente
- * @param {string|null} [ignoreEntryId]
- * @returns {boolean}
- */
-export function isExpedienteDuplicateForUserMonth(email, yyyyMM, expediente, ignoreEntryId = null) {
-  return entries().some(e =>
-    e.email === email.toLowerCase() &&
-    e.fecha.startsWith(yyyyMM) &&
-    e.expediente === expediente &&
-    e.id !== ignoreEntryId
-  );
+/** @param {User|null} u */
+export function setCurrentUserData(u) {
+  state.currentUserData = u;
 }
 
-/**
- * Pinta el preview de puntos al seleccionar tipo.
- */
-export function updatePointsPreview() {
-  const sel = /** @type {HTMLSelectElement} */ (document.getElementById('tipoEscrito'));
-  const out = document.getElementById('puntosPreview');
-  if (!sel || !out) return;
-  const t = tiposEscritos().find(x => x.id === sel.value);
-  out.textContent = t ? `${t.puntuacion} puntos` : '-';
+/** @param {Entry[]} list */
+export function setEntries(list) {
+  state.entries = Array.isArray(list) ? list : [];
 }
 
-/**
- * Maneja el submit del formulario de registro.
- * Crea una entrada en Excel y actualiza el estado.
- * @param {SubmitEvent} ev
- */
-export async function handleRegister(ev) {
-  ev.preventDefault();
+/** @param {User[]} list */
+export function setUsers(list) {
+  state.users = Array.isArray(list) ? list : [];
+}
 
-  const fecha = /** @type {HTMLInputElement} */ (document.getElementById('fecha')).value;
-  const expediente = /** @type {HTMLInputElement} */ (document.getElementById('expediente')).value.trim();
-  const tipoId = /** @type {HTMLSelectElement} */ (document.getElementById('tipoEscrito')).value;
-  const comentario = /** @type {HTMLTextAreaElement} */ (document.getElementById('comentario')).value.trim();
+/** @param {TipoEscrito[]} list */
+export function setTiposEscritos(list) {
+  state.tiposEscritos = Array.isArray(list) ? list : [];
+}
 
-  const myEmail = (currentUser()?.username || '').toLowerCase();
-  const yyyyMM = fecha.slice(0, 7);
-
-  if (!fecha || !expediente || !tipoId) {
-    toast('Completa los campos obligatorios', 'warning');
-    return;
-  }
-
-  const expErr = document.getElementById('expedienteError');
-  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente)) {
-    if (expErr) expErr.textContent = 'Este expediente ya existe este mes para ti.';
-    return;
-  } else if (expErr) {
-    expErr.textContent = '';
-  }
-
-  const tipo = tiposEscritos().find(t => t.id === tipoId);
-  if (!tipo) {
-    toast('Tipo inválido', 'error');
-    return;
-  }
-
-  /** @type {Entry} */
-  const entry = {
-    id: Date.now().toString(),
-    usuario: (currentUserData()?.nombre || currentUser()?.name || myEmail),
-    email: myEmail,
-    fecha, expediente, tipoId,
-    puntos: Number(tipo.puntuacion) || 0,
-    comentario
+/** @param {Configuracion} cfg */
+export function setConfiguracion(cfg) {
+  const safe = cfg || {};
+  state.configuracion = {
+    puntosPorDia: Number(safe.puntosPorDia) || 0,
+    bonoMensual: Number(safe.bonoMensual) || 0,
+    fechaVigencia: typeof safe.fechaVigencia === 'string'
+      ? safe.fechaVigencia
+      : new Date().toISOString().slice(0, 10)
   };
+}
 
-  try {
-    showLoading(true);
-    await addRow(EXCEL.tables.Entradas, [
-      entry.id, entry.usuario, entry.email, entry.fecha, entry.expediente, entry.tipoId, entry.puntos, entry.comentario
-    ]);
+/** @param {HistChange[]} list */
+export function setHistorialCambios(list) {
+  state.historialCambios = Array.isArray(list) ? list : [];
+}
 
-    // Releer índices e inyectar en memoria
-    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps().Entradas);
-    setEntries([...entries(), entry]);
-
-    toast('Entrada registrada', 'success');
-
-    // Reset ligero
-    const form = /** @type {HTMLFormElement} */ (document.getElementById('registerForm'));
-    if (form) form.reset();
-    const f = /** @type {HTMLInputElement} */ (document.getElementById('fecha'));
-    if (f) f.value = new Date().toISOString().slice(0, 10);
-    const pp = document.getElementById('puntosPreview');
-    if (pp) pp.textContent = '-';
-
-    // Dejar que el dashboard/historial se refresquen
-    document.dispatchEvent(new CustomEvent('entries:changed'));
-  } catch (err) {
-    console.error(err);
-    toast('Error al guardar', 'error');
-  } finally {
-    showLoading(false);
-  }
+/** @param {{fecha:string, sede:string, descripcion:string}[]} list */
+export function setFestivos(list) {
+  state.festivos = Array.isArray(list) ? list : [];
 }
 
 /**
- * Abre modal de edición y precarga valores.
- * Control básico de permisos: propio o supervisor.
- * @param {string} id
+ * Reemplaza por completo los Mapas de índices (útil tras una carga inicial).
+ * Se espera un objeto con Maps válidos; si no, se conservan los existentes.
+ * @param {{ Entradas?: Map<string,number>, Usuarios?: Map<string,number>, Tipos?: Map<string,number> }} maps
  */
-export function editEntry(id) {
-  const e = entries().find(x => x.id === id);
-  if (!e) return;
-
-  const myEmail = (currentUser()?.username || '').toLowerCase();
-  if (e.email !== myEmail && currentUserData()?.rol !== 'supervisor') {
-    toast('Sin permisos', 'error');
-    return;
-  }
-
-  /** @type {HTMLInputElement} */
-  (document.getElementById('editId')).value = e.id;
-  /** @type {HTMLInputElement} */
-  (document.getElementById('editFecha')).value = e.fecha;
-  /** @type {HTMLInputElement} */
-  (document.getElementById('editExpediente')).value = e.expediente;
-  /** @type {HTMLSelectElement} */
-  (document.getElementById('editTipoEscrito')).value = e.tipoId;
-  /** @type {HTMLTextAreaElement} */
-  (document.getElementById('editComentario')).value = e.comentario || '';
-
-  const modalEl = document.getElementById('editModal');
-  if (modalEl) new bootstrap.Modal(modalEl).show();
+export function setRowIndexMaps(maps) {
+  if (maps && maps.Entradas instanceof Map) state.rowIndexMaps.Entradas = maps.Entradas;
+  if (maps && maps.Usuarios instanceof Map) state.rowIndexMaps.Usuarios = maps.Usuarios;
+  if (maps && maps.Tipos instanceof Map) state.rowIndexMaps.Tipos = maps.Tipos;
 }
 
-/**
- * Guarda edición de una entrada.
- */
-export async function saveEdit() {
-  const id = /** @type {HTMLInputElement} */ (document.getElementById('editId')).value;
-  const fecha = /** @type {HTMLInputElement} */ (document.getElementById('editFecha')).value;
-  const expediente = /** @type {HTMLInputElement} */ (document.getElementById('editExpediente')).value.trim();
-  const tipoId = /** @type {HTMLSelectElement} */ (document.getElementById('editTipoEscrito')).value;
-  const comentario = /** @type {HTMLTextAreaElement} */ (document.getElementById('editComentario')).value.trim();
-
-  const idx = entries().findIndex(e => e.id === id);
-  if (idx < 0) return;
-
-  const myEmail = entries()[idx].email;
-  const yyyyMM = fecha.slice(0, 7);
-
-  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente, id)) {
-    toast('Expediente duplicado para ese mes', 'warning');
-    return;
-  }
-  const tipo = tiposEscritos().find(t => t.id === tipoId);
-  if (!tipo) {
-    toast('Tipo inválido', 'error');
-    return;
-  }
-
-  try {
-    showLoading(true);
-    const rowIndex = rowIndexMaps().Entradas.get(id);
-    const rowValues = [id, entries()[idx].usuario, myEmail, fecha, expediente, tipoId, Number(tipo.puntuacion) || 0, comentario];
-    await replaceRow(EXCEL.tables.Entradas, rowIndex, rowValues);
-
-    const newList = [...entries()];
-    newList[idx] = { ...newList[idx], fecha, expediente, tipoId, puntos: Number(tipo.puntuacion) || 0, comentario };
-    setEntries(newList);
-
-    const modalEl = document.getElementById('editModal');
-    if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
-
-    toast('Entrada actualizada', 'success');
-    document.dispatchEvent(new CustomEvent('entries:changed'));
-  } catch (err) {
-    console.error(err);
-    toast('Error al actualizar', 'error');
-  } finally {
-    showLoading(false);
-  }
-}
+/* =========================
+   Helpers opcionales
+========================= */
 
 /**
- * Elimina una entrada (con permisos).
- * @param {string} id
+ * Limpia el estado a valores por defecto (no suele usarse en prod).
+ * Mantiene las referencias de los Maps para no romper consumidores.
  */
-export async function deleteEntry(id) {
-  const e = entries().find(x => x.id === id);
-  if (!e) return;
-
-  const myEmail = (currentUser()?.username || '').toLowerCase();
-  if (e.email !== myEmail && currentUserData()?.rol !== 'supervisor') {
-    toast('Sin permisos', 'error');
-    return;
-  }
-  if (!confirm('¿Eliminar entrada?')) return;
-
-  try {
-    showLoading(true);
-    const rowIndex = rowIndexMaps().Entradas.get(id);
-    await deleteRow(EXCEL.tables.Entradas, rowIndex);
-
-    setEntries(entries().filter(x => x.id !== id));
-    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps().Entradas);
-
-    toast('Entrada eliminada', 'success');
-    document.dispatchEvent(new CustomEvent('entries:changed'));
-  } catch (err) {
-    console.error(err);
-    toast('Error al eliminar', 'error');
-  } finally {
-    showLoading(false);
-  }
-}
-
-/**
- * Registra listeners propios del módulo de formularios.
- * Llamado desde app.js
- */
-export function bindFormEvents() {
-  const form = document.getElementById('registerForm');
-  if (form) form.addEventListener('submit', handleRegister);
-
-  const tipoSel = document.getElementById('tipoEscrito');
-  if (tipoSel) tipoSel.addEventListener('change', updatePointsPreview);
-
-  const expInput = document.getElementById('expediente');
-  if (expInput) expInput.addEventListener('input', () => {
-    const expErr = document.getElementById('expedienteError');
-    if (expErr) expErr.textContent = '';
-  });
-
-  const saveEditBtn = document.getElementById('saveEdit');
-  if (saveEditBtn) saveEditBtn.addEventListener('click', saveEdit);
-
-  // Delegación segura para botones inline en tablas
-  document.addEventListener('click', (ev) => {
-    const btn = /** @type {HTMLElement} */ (ev.target instanceof HTMLElement ? ev.target.closest('[data-action]') : null);
-    if (!btn) return;
-    if (btn.dataset.action === 'edit-entry' && btn.dataset.id) editEntry(btn.dataset.id);
-    if (btn.dataset.action === 'delete-entry' && btn.dataset.id) deleteEntry(btn.dataset.id);
-  });
+export function resetState() {
+  state.currentUser = null;
+  state.currentUserData = null;
+  state.entries = [];
+  state.users = [];
+  state.tiposEscritos = [];
+  state.configuracion = {
+    puntosPorDia: 2,
+    bonoMensual: 300,
+    fechaVigencia: new Date().toISOString().slice(0, 10)
+  };
+  state.historialCambios = [];
+  state.festivos = [];
+  state.rowIndexMaps.Entradas.clear();
+  state.rowIndexMaps.Usuarios.clear();
+  state.rowIndexMaps.Tipos.clear();
 }
