@@ -1,0 +1,41 @@
+:root{
+  --primary:#1f2a44;
+  --secondary:#4c92ff;
+  --success:#22c55e;
+  --danger:#ef4444;
+  --warning:#f59e0b;
+  --bg:#f4f7fb;
+  --text:#1f2937;
+  --card:#ffffff;
+}
+html,body{background:var(--bg);color:var(--text);font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial}
+.navbar{background:linear-gradient(90deg,var(--primary),#2b3b64)}
+.navbar-brand{font-weight:700}
+.main-container{padding-top:86px;padding-bottom:60px;min-height:calc(100vh - 86px)}
+.card{border:none;border-radius:14px;box-shadow:0 6px 24px rgba(20,30,50,.08);background:var(--card)}
+.card-header{border:none;border-radius:14px 14px 0 0;background:transparent;padding:18px 20px}
+.btn-primary{background:var(--secondary);border-color:var(--secondary)}
+.btn-outline-primary{border-color:var(--secondary);color:var(--secondary)}
+.btn-outline-primary:hover{background:var(--secondary);color:#fff}
+.kpi{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#edf3ff,#f6fbff)}
+.kpi i{font-size:22px;color:var(--secondary)}
+.kpi .v1{font-size:24px;font-weight:800}
+.progress-modern{height:14px;border-radius:10px;background:#e9eef7}
+.progress-modern .bar{height:100%;border-radius:10px;background:linear-gradient(90deg,var(--secondary),#7bb1ff)}
+.badge-chip{border-radius:999px;padding:.35rem .6rem}
+.loading-spinner{display:none;position:fixed;inset:0;background:rgba(255,255,255,.6);z-index:1055;align-items:center;justify-content:center}
+.loading-spinner.show{display:flex}
+.rank-medal{font-size:18px}
+.chart-card{padding:10px 16px 22px}
+.subtle{color:#6b7280}
+.supervisor-badge{background:var(--warning);color:#fff;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-left:6px}
+.login-wrap{position:fixed;inset:0;min-height:100svh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary),#3a4f86);z-index:1060}
+#dailyStatus{max-height:160px;overflow:auto;padding-right:4px}
+.chart-card .row{align-items:stretch}
+.login-card{width:min(420px, 92vw);padding:28px 26px;background:#fff;border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.25);animation:pop .25s ease-out}
+.login-card .btn{padding:.9rem 1rem;font-weight:700;letter-spacing:.2px}
+@keyframes pop{from{transform:translateY(6px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+.pill-tabs .nav-link{border-radius:999px}
+.chart-wrap{height:280px}
+.doughnut-wrap{height:260px}
+#dailyPointsChart,#gaugeChart{width:100% !important;height:100% !important;display:block}
