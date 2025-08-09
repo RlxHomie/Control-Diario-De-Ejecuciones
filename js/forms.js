@@ -6,13 +6,12 @@ import { addRow, replaceRow, deleteRow, getTableRows } from './api.js';
 import {
   entries, users, tiposEscritos, configuracion, rowIndexMaps,
   currentUser, currentUserData,
-  setEntries, setTiposEscritos, setUsers, setCurrentUserData
+  setEntries
 } from './data.js';
 import {
   esc, fmtEUR, parseDateCell, showLoading, toast,
   getWorkingDaysYYYYMM, getRelativeTodayDay, monthOf, getUserByEmail
 } from './utils.js';
-import { initCharts } from './charts.js';
 
 /** @typedef {{id:string, usuario:string, email:string, fecha:string, expediente:string, tipoId:string, puntos:number, comentario:string}} Entry */
 
@@ -124,7 +123,7 @@ export async function handleRegister(ev) {
     const pp = document.getElementById('puntosPreview');
     if (pp) pp.textContent = '-';
 
-    // Dejar que el dashboard se refresque (app.js registra el listener)
+    // Dejar que el dashboard/historial se refresquen
     document.dispatchEvent(new CustomEvent('entries:changed'));
   } catch (err) {
     console.error(err);
@@ -160,7 +159,6 @@ export function editEntry(id) {
   /** @type {HTMLTextAreaElement} */
   (document.getElementById('editComentario')).value = e.comentario || '';
 
-  // Bootstrap Modal
   const modalEl = document.getElementById('editModal');
   if (modalEl) new bootstrap.Modal(modalEl).show();
 }
@@ -267,8 +265,7 @@ export function bindFormEvents() {
   const saveEditBtn = document.getElementById('saveEdit');
   if (saveEditBtn) saveEditBtn.addEventListener('click', saveEdit);
 
-  // Exponer acciones para botones inline (tabla historial)
-  // Evita fugas globales: delega con eventos
+  // Delegación segura para botones inline en tablas
   document.addEventListener('click', (ev) => {
     const btn = /** @type {HTMLElement} */ (ev.target instanceof HTMLElement ? ev.target.closest('[data-action]') : null);
     if (!btn) return;
