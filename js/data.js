@@ -176,7 +176,6 @@ export function setRowIndexMaps(maps) {
 
 /**
  * Mapa id -> TipoEscrito (derivado del estado actual).
- * Se usa, por ejemplo, en dashboard para resolver puntos/nombres rápido.
  * @returns {Map<string, TipoEscrito>}
  */
 export function getTipoMap() {
