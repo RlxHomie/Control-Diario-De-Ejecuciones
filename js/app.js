@@ -15,6 +15,7 @@ import { loadDashboard } from './dashboard.js';
 import { bindFormEvents } from './forms.js';
 import { bindSupervisorEvents, loadSupervisorDashboard, displayEscritoTypes, showEscritoModal } from './supervisor.js';
 import { bindExportEvents } from './export.js';
+import { bindHistoryEvents } from './history.js';
 import { EXCEL } from './config.js';
 
 /**
@@ -219,7 +220,7 @@ export async function bootstrap() {
   await initMSAL();
 
   // ¿Hay cuenta en caché?
-  const accounts = (typeof getAccounts === 'function') ? getAccounts() : [];
+  const accounts = getAccounts();
   if (!accounts || (Array.isArray(accounts) && accounts.length === 0)) {
     // Mostrar login; showMainApp se llamará al volver del redirect
     document.getElementById('loginScreen')?.setAttribute('style', 'display:block');
@@ -234,6 +235,7 @@ export async function bootstrap() {
   bindFormEvents();
   bindSupervisorEvents();
   bindExportEvents();
+  bindHistoryEvents();
 
   // Render inicial "seguro"
   showSection('dashboard');
@@ -244,10 +246,10 @@ export async function bootstrap() {
 
 // Exponer helpers globales para compatibilidad con onclick inline
 import { editEntry, deleteEntry, saveEdit } from './forms.js';
-import { editUser, saveUserData, saveEscritoType, deleteEscritoType } from './supervisor.js';
+import { editUser, saveUserData, saveEscritoType, editEscritoType, deleteEscritoType } from './supervisor.js';
 Object.assign(window, {
   editEntry, deleteEntry, saveEdit,
-  editUser, saveUserData, saveEscritoType, deleteEscritoType
+  editUser, saveUserData, saveEscritoType, editEscritoType, deleteEscritoType
 });
 
 // Auto arranque cuando el DOM esté listo
