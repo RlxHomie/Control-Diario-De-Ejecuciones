@@ -982,26 +982,27 @@ function initCharts(){
     }
   });
 
-  gaugeChart = new Chart(ctxGauge,{
-    type:'doughnut',
-    data:{
-      labels:['Progreso','Pendiente'],
-      datasets:[{
-        data:[0,100],
-        cutout:'72%',
-        backgroundColor:['#4c92ff','#e9eef7']
-      }]
-    },
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      plugins:{
-        legend:{ display:false },
-        tooltip:{ enabled:false },
-        centerText:{ text:'0%' } // <- lo actualizamos en renderGauge
-      }
+  // --- initCharts(): gauge sin leyenda ni labels ---
+gaugeChart = new Chart(ctxGauge,{
+  type:'doughnut',
+  data:{
+    labels: [],                // <- sin etiquetas
+    datasets:[{
+      data:[0,100],
+      cutout:'72%',
+      backgroundColor:['#4c92ff','#e9eef7']
+    }]
+  },
+  options:{
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{ display:false },   // <- leyenda fuera
+      tooltip:{ enabled:false },
+      centerText:{ text:'0%' }
     }
-  });
+  }
+});
 }
 function renderGauge(percentage){
   const val = Math.max(0, Math.min(100, percentage));
@@ -1663,6 +1664,7 @@ if (location.hostname==='localhost' || location.hostname==='127.0.0.1'){
 </script>
 </body>
 </html>
+
 
 
 
