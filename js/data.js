@@ -1,5 +1,6 @@
 // js/data.js
-// Estado centralizado de la aplicación (store) para módulos ESM
+// Estado centralizado (store) y utilidades derivadas del estado.
+// ESM limpio, sin comas colgantes y con JSDoc para mantenimiento.
 
 /**
  * @typedef {Object} User
@@ -8,7 +9,7 @@
  * @property {string} email
  * @property {"usuario"|"supervisor"} rol
  * @property {string} [sede]
- * @property {string} [vacaciones]  // CSV de fechas YYYY-MM-DD
+ * @property {string} [vacaciones]  // CSV YYYY-MM-DD
  */
 
 /**
@@ -78,7 +79,7 @@ const state = {
 };
 
 /* =========================
-   Getters
+   Getters de estado
 ========================= */
 
 /** @returns {any} */
@@ -101,7 +102,7 @@ export const festivos = () => state.festivos;
 export const rowIndexMaps = () => state.rowIndexMaps;
 
 /* =========================
-   Setters (mutaciones)
+   Setters / mutaciones
 ========================= */
 
 /** @param {any} u */
@@ -153,7 +154,6 @@ export function setFestivos(list) {
 
 /**
  * Reemplaza por completo los Mapas de índices (útil tras una carga inicial).
- * Se espera un objeto con Maps válidos; si no, se conservan los existentes.
  * @param {{ Entradas?: Map<string,number>, Usuarios?: Map<string,number>, Tipos?: Map<string,number> }} maps
  */
 export function setRowIndexMaps(maps) {
@@ -163,12 +163,43 @@ export function setRowIndexMaps(maps) {
 }
 
 /* =========================
-   Helpers opcionales
+   Derivados del estado
 ========================= */
 
 /**
- * Limpia el estado a valores por defecto (no suele usarse en prod).
- * Mantiene las referencias de los Maps para no romper consumidores.
+ * Mapa id -> TipoEscrito (derivado del estado actual).
+ * Se usa, por ejemplo, en dashboard para resolver puntos/nombres rápido.
+ * @returns {Map<string, TipoEscrito>}
+ */
+export function getTipoMap() {
+  const m = new Map();
+  for (const t of state.tiposEscritos) m.set(t.id, t);
+  return m;
+}
+
+/* =========================
+   Re-exports (helpers comunes)
+   Evita duplicación: dejamos la lógica en utils.js,
+   pero exportamos aquí para mantener compat con imports existentes.
+========================= */
+export {
+  // Busca un usuario por email en el estado actual
+  getUserByEmail,
+  // Festivos y días laborables
+  getFestivosByMonthSede,
+  getWorkingDaysYYYYMM,
+  // Fechas relativas/mes
+  getRelativeTodayDay,
+  monthOf
+} from './utils.js';
+
+/* =========================
+   Utilidades de mantenimiento
+========================= */
+
+/**
+ * Reinicia el estado a valores por defecto.
+ * Mantiene referencias de Maps (clear) para no romper consumidores.
  */
 export function resetState() {
   state.currentUser = null;
