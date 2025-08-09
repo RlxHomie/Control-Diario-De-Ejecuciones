@@ -1,451 +1,4 @@
-/* ==== Historial ==== */
-function loadHistory(){
-  const myEmail = currentUser.username.toLowerCase();
-  const tipoMap = getTipoMap();
-  const myEntries = entries.filter(e=> e.email===myEmail);
-  renderHistoryTable(myEntries, tipoMap);
-}
-
-function renderHistoryTable(arr, tipoMap){
-  if (!Array.isArray(arr)) return;
-  const tbody = document.getElementById('historyTableBody');
-  if (!arr.length){ 
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center subtle">No hay entradas</td></tr>`; 
-    return; 
-  }
-  const sorted = [...arr].sort((a,b)=> b.fecha.localeCompare(a.fecha));
-  tbody.innerHTML = sorted.map(e=>{
-    const tipo = tipoMap.get(e.tipoId);
-    return `<tr>
-      <td>${esc(e.fecha)}</td>
-      <td>${esc(e.expediente)}</td>
-      <td>${esc(tipo?.nombre || e.tipoId)}</td>
-      <td><span class="badge bg-primary">${(e.puntos || tipo?.puntuacion || 0)}</span></td>
-      <td>${e.comentario ? esc(e.comentario) : '-'}</td>
-      <td>
-        <button class="btn btn-sm btn-primary me-1" onclick="editEntry('${e.id}')"><i class="fa-solid fa-pen"></i></button>
-        <button class="btn btn-sm btn-danger" onclick="deleteEntry('${e.id}')"><i class="fa-solid fa-trash"></i></button>
-      </td>
-    </tr>`;
-  }).join("");
-}
-
-function applyFilters(){
-  const myEmail = currentUser.username.toLowerCase();
-  const tipoMap = getTipoMap();
-  const df = document.getElementById('filterDateFrom').value;
-  const dt = document.getElementById('filterDateTo').value;
-  const typeId = document.getElementById('filterType').value;
-  let filtered = entries.filter(e=> e.email===myEmail);
-  if (df) filtered = filtered.filter(e=> e.fecha >= df);
-  if (dt) filtered = filtered.filter(e=> e.fecha <= dt);
-  if (typeId) filtered = filtered.filter(e=> e.tipoId === typeId);
-  renderHistoryTable(filtered, tipoMap);
-}
-
-/* ==== Registro / Editar / Eliminar ==== */
-function isExpedienteDuplicateForUserMonth(email, yyyyMM, expediente, ignoreEntryId=null){
-  return entries.some(e =>
-    e.email===email.toLowerCase() &&
-    e.fecha.startsWith(yyyyMM) &&
-    e.expediente===expediente &&
-    e.id!==ignoreEntryId
-  );
-}
-
-async function handleRegister(e){
-  e.preventDefault();
-  const fecha = document.getElementById('fecha').value;
-  const expediente = document.getElementById('expediente').value.trim();
-  const tipoId = document.getElementById('tipoEscrito').value;
-  const comentario = document.getElementById('comentario').value.trim();
-
-  const myEmail = currentUser.username.toLowerCase();
-  const yyyyMM = fecha.slice(0,7);
-
-  if (!fecha || !expediente || !tipoId){ 
-    toast("Completa los campos obligatorios","warning"); 
-    return; 
-  }
-
-  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente)){
-    document.getElementById('expedienteError').textContent = 'Este expediente ya existe este mes para ti.';
-    return;
-  } else {
-    document.getElementById('expedienteError').textContent = '';
-  }
-
-  const tipo = tiposEscritos.find(t=>t.id===tipoId);
-  if (!tipo){ 
-    toast("Tipo inválido","error"); 
-    return; 
-  }
-
-  const entry = {
-    id: Date.now().toString(),
-    usuario: currentUserData?.nombre || currentUser.name || myEmail,
-    email: myEmail,
-    fecha, expediente, tipoId,
-    puntos: tipo.puntuacion,
-    comentario
-  };
-
-  try{
-    showLoading(true);
-    await addRow(EXCEL.tables.Entradas, [
-      entry.id, entry.usuario, entry.email, entry.fecha, 
-      entry.expediente, entry.tipoId, entry.puntos, entry.comentario
-    ]);
-    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
-    entries.push(entry);
-
-    toast("Entrada registrada","success");
-    document.getElementById('registerForm').reset();
-    document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
-    document.getElementById('puntosPreview').textContent = '-';
-    loadDashboard();
-  }catch(err){
-    console.error(err); 
-    toast("Error al guardar","error");
-  }finally{ 
-    showLoading(false); 
-  }
-}
-
-window.editEntry = function(id){
-  const e = entries.find(x=>x.id===id); 
-  if (!e) return;
-  const myEmail = currentUser.username.toLowerCase();
-  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ 
-    toast("Sin permisos","error"); 
-    return; 
-  }
-  document.getElementById('editId').value = e.id;
-  document.getElementById('editFecha').value = e.fecha;
-  document.getElementById('editExpediente').value = e.expediente;
-  document.getElementById('editTipoEscrito').value = e.tipoId;
-  document.getElementById('editComentario').value = e.comentario || '';
-  new bootstrap.Modal(document.getElementById('editModal')).show();
-}
-
-async function saveEdit(){
-  const id = document.getElementById('editId').value;
-  const fecha = document.getElementById('editFecha').value;
-  const expediente = document.getElementById('editExpediente').value.trim();
-  const tipoId = document.getElementById('editTipoEscrito').value;
-  const comentario = document.getElementById('editComentario').value.trim();
-
-  const idx = entries.findIndex(e=>e.id===id); 
-  if (idx<0) return;
-  const myEmail = entries[idx].email;
-  const yyyyMM = fecha.slice(0,7);
-
-  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente, id)){
-    toast("Expediente duplicado para ese mes","warning"); 
-    return;
-  }
-  const tipo = tiposEscritos.find(t=>t.id===tipoId); 
-  if (!tipo){ 
-    toast("Tipo inválido","error"); 
-    return; 
-  }
-
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Entradas.get(id);
-    const rowValues = [
-      id, entries[idx].usuario, myEmail, fecha, 
-      expediente, tipoId, tipo.puntuacion, comentario
-    ];
-    await replaceRow(EXCEL.tables.Entradas, rowIndex, rowValues);
-    entries[idx] = { 
-      ...entries[idx], 
-      fecha, expediente, tipoId, 
-      puntos: tipo.puntuacion, comentario 
-    };
-    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
-    toast("Entrada actualizada","success");
-    if (document.getElementById('historySection').style.display!=="none") {
-      loadHistory(); 
-    } else {
-      loadDashboard();
-    }
-  }catch(err){ 
-    console.error(err); 
-    toast("Error al actualizar","error"); 
-  }finally{ 
-    showLoading(false); 
-  }
-}
-
-window.deleteEntry = async function(id){
-  const e = entries.find(x=>x.id===id); 
-  if (!e) return;
-  const myEmail = currentUser.username.toLowerCase();
-  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ 
-    toast("Sin permisos","error"); 
-    return; 
-  }
-  if (!confirm("¿Eliminar entrada?")) return;
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Entradas.get(id);
-    await deleteRow(EXCEL.tables.Entradas, rowIndex);
-    entries = entries.filter(x=>x.id!==id);
-    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
-    toast("Entrada eliminada","success");
-    if (document.getElementById('historySection').style.display!=="none") {
-      loadHistory(); 
-    } else {
-      loadDashboard();
-    }
-  }catch(err){ 
-    console.error(err); 
-    toast("Error al eliminar","error"); 
-  }finally{ 
-    showLoading(false); 
-  }
-}
-
-async function refreshRowIndex(tableName, map){
-  map.clear();
-  const rows = await getTableRows(tableName);
-  rows.forEach(r=>{
-    const id = String(r.values[0][0]||"");
-    if (id) map.set(id, r.index);
-  });
-}
-
-/* ==== Supervisor ==== */
-function loadSupervisorDashboard(){
-  const yyyyMM = document.getElementById('supervisorMonth').value;
-  const selectedEmail = document.getElementById('supervisorUser').value;
-  const tipoMap = getTipoMap();
-
-  const statsMap = new Map();
-  users.forEach(u=> statsMap.set(u.email, { 
-    nombre:u.nombre, email:u.email, rol:u.rol, sede:u.sede, 
-    puntos:0, entradas:0, dias:0, porcentaje:0 
-  }));
-
-  const monthEntries = entries.filter(e=> 
-    e.fecha.startsWith(yyyyMM) && (!selectedEmail || e.email===selectedEmail)
-  );
-  monthEntries.forEach(e=>{
-    const st = statsMap.get(e.email);
-    if (st){ 
-      st.puntos += (e.puntos || tipoMap.get(e.tipoId)?.puntuacion || 0); 
-      st.entradas += 1; 
-    }
-  });
-
-  statsMap.forEach((st, email)=>{
-    if (selectedEmail && email!==selectedEmail) return;
-    const user = getUserByEmail(email);
-    const dias = getWorkingDaysYYYYMM(yyyyMM, user?.sede, user?.vacaciones).length;
-    st.dias = dias;
-    const required = dias * configuracion.puntosPorDia;
-    st.porcentaje = required>0 ? (st.puntos/required*100) : 0;
-  });
-
-  const stats = [...statsMap.values()]
-    .filter(s=>!selectedEmail || s.email===selectedEmail)
-    .sort((a,b)=> b.puntos - a.puntos);
-  renderRanking(stats);
-  renderUsersManagement();
-}
-
-function renderRanking(stats){
-  const container = document.getElementById('rankingTable');
-  if (!stats.length){ 
-    container.innerHTML = '<div class="subtle text-center">Sin datos</div>'; 
-    return; 
-  }
-  let html = `<div class="table-responsive"><table class="table align-middle table-hover">
-    <thead><tr><th>Pos.</th><th>Usuario</th><th>Puntos</th><th>Entradas</th><th>% Meta</th><th>Bono</th></tr></thead><tbody>`;
-  stats.forEach((s,i)=>{
-    const pos=i+1;
-    const medal = pos===1?'<i class="fa-solid fa-trophy text-warning rank-medal"></i>': 
-                  (pos<=3?'<i class="fa-solid fa-medal text-secondary rank-medal"></i>':'');
-    const bonus = s.porcentaje>=100 ? configuracion.bonoMensual : 0;
-    html += `<tr>
-      <td>${medal} ${pos}</td>
-      <td>${esc(s.nombre)} ${s.rol==='supervisor'?'<span class="supervisor-badge">SUP</span>':''}</td>
-      <td><span class="badge bg-primary">${s.puntos.toFixed(2)}</span></td>
-      <td>${s.entradas}</td>
-      <td><div class="progress" style="width:120px">
-        <div class="progress-bar ${s.porcentaje>=100?'bg-success':'bg-warning'}" 
-             style="width:${Math.min(s.porcentaje,100)}%">${s.porcentaje.toFixed(0)}%</div>
-      </div></td>
-      <td>${fmtEUR.format(bonus)}</td>
-    </tr>`;
-  });
-  html += `</tbody></table></div>`;
-  container.innerHTML = html;
-}
-
-function renderUsersManagement(){
-  const tbody = document.getElementById('usersManagementTable');
-  tbody.innerHTML = users.map(u=>
-    `<tr>
-      <td>${esc(u.nombre)}</td>
-      <td>${esc(u.email)}</td>
-      <td>${esc(u.sede||'-')}</td>
-      <td><span class="badge ${u.rol==='supervisor'?'bg-warning':'bg-secondary'}">${u.rol}</span></td>
-      <td>${u.vacaciones ? u.vacaciones.split(',').filter(Boolean).length : 0} días</td>
-      <td><button class="btn btn-sm btn-primary" onclick="editUser('${u.id}')">
-        <i class="fa-solid fa-pen"></i> Editar</button></td>
-    </tr>`
-  ).join('');
-}
-
-window.editUser = function(userId){
-  if (currentUserData?.rol!=="supervisor"){ 
-    toast("Sin permisos","error"); 
-    return; 
-  }
-  const u = users.find(x=>x.id===userId); 
-  if (!u) return;
-  document.getElementById('userId').value = u.id;
-  document.getElementById('userNombre').value = u.nombre;
-  document.getElementById('userEmail').value = u.email;
-  document.getElementById('userRol').value = u.rol;
-  document.getElementById('userSede').value = u.sede || '';
-  document.getElementById('userVacaciones').value = u.vacaciones || '';
-  new bootstrap.Modal(document.getElementById('editUserModal')).show();
-}
-
-async function saveUserData(){
-  const id = document.getElementById('userId').value;
-  const uIdx = users.findIndex(u=>u.id===id); 
-  if (uIdx<0) return;
-  const rol = document.getElementById('userRol').value;
-  const sede = document.getElementById('userSede').value.trim();
-  const vacaciones = document.getElementById('userVacaciones').value.trim();
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Usuarios.get(id);
-    const u = { ...users[uIdx], rol, sede, vacaciones };
-    await replaceRow(EXCEL.tables.Usuarios, rowIndex, [
-      u.id, u.nombre, u.email, u.rol, u.sede, u.vacaciones
-    ]);
-    users[uIdx] = u;
-    bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
-    toast("Usuario actualizado","success");
-    loadSupervisorDashboard();
-  }catch(err){ 
-    console.error(err); 
-    toast("Error al actualizar usuario","error"); 
-  }finally{ 
-    showLoading(false); 
-  }
-}
-
-/* ==== Tipos de escritos ==== */
-function displayEscritoTypes(){
-  const tbody = document.getElementById('escritosTypesTable');
-  tbody.innerHTML = tiposEscritos.map(t=>{
-    const inUse = entries.some(e=>e.tipoId===t.id);
-    return `<tr>
-      <td>${esc(t.id)}</td>
-      <td>${esc(t.nombre)}</td>
-      <td>${t.puntuacion}</td>
-      <td><span class="badge ${t.activo?'bg-success':'bg-danger'}">${t.activo?'Activo':'Inactivo'}</span></td>
-      <td>
-        <button class="btn btn-sm btn-primary me-1" onclick="editEscritoType('${t.id}')">
-          <i class="fa-solid fa-pen"></i></button>
-        ${!inUse ? `<button class="btn btn-sm btn-danger" onclick="deleteEscritoType('${t.id}')">
-          <i class="fa-solid fa-trash"></i></button>`:''}
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function showEscritoModal(id=null){
-  if (currentUserData?.rol!=="supervisor"){ 
-    toast("Sin permisos","error"); 
-    return; 
-  }
-  const title = document.getElementById('editEscritoTitle');
-  if (id){
-    const t = tiposEscritos.find(x=>x.id===id); 
-    if (!t) return;
-    title.textContent = 'Editar tipo de escrito';
-    document.getElementById('escritoId').value = t.id;
-    document.getElementById('escritoNombre').value = t.nombre;
-    document.getElementById('escritoPuntuacion').value = t.puntuacion;
-    document.getElementById('escritoActivo').checked = t.activo;
-  } else {
-    title.textContent = 'Nuevo tipo de escrito';
-    document.getElementById('escritoId').value = '';
-    document.getElementById('escritoNombre').value = '';
-    document.getElementById('escritoPuntuacion').value = '';
-    document.getElementById('escritoActivo').checked = true;
-  }
-  new bootstrap.Modal(document.getElementById('editEscritoModal')).show();
-}
-
-window.editEscritoType = function(id){ 
-  showEscritoModal(id); 
-}
-
-async function saveEscritoType(){
-  const id = document.getElementById('escritoId').value || Date.now().toString();
-  const nombre = document.getElementById('escritoNombre').value.trim();
-  const puntuacion = parseFloat(document.getElementById('escritoPuntuacion').value);
-  const activo = document.getElementById('escritoActivo').checked;
-  if (!nombre || Number.isNaN(puntuacion)){ 
-    toast("Completa los campos","warning"); 
-    return; 
-  }
-  try{
-    showLoading(true);
-    const idx = tiposEscritos.findIndex(t=>t.id===id);
-    if (idx>=0){
-      const rowIndex = rowIndexMaps.Tipos.get(id);
-      await replaceRow(EXCEL.tables.Tipos, rowIndex, [id, nombre, puntuacion, activo]);
-      tiposEscritos[idx] = { id, nombre, puntuacion, activo };
-    } else {
-      await addRow(EXCEL.tables.Tipos, [id, nombre, puntuacion, activo]);
-      await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
-      tiposEscritos.push({ id, nombre, puntuacion, activo });
-    }
-    bootstrap.Modal.getInstance(document.getElementById('editEscritoModal')).hide();
-    toast("Tipo guardado","success");
-    populateTipoSelects();
-    displayEscritoTypes();
-  }catch(err){ 
-    console.error(err); 
-    toast("Error guardando tipo","error"); 
-  }finally{ 
-    showLoading(false); 
-  }
-}
-
-window.deleteEscritoType = async function(id){
-  const t = tiposEscritos.find(x=>x.id===id); 
-  if (!t) return;
-  if (entries.some(e=>e.tipoId===id)){ 
-    toast("Está en uso, desactívalo en su lugar","warning"); 
-    return; 
-  }
-  if (!confirm(`¿Eliminar "${t.nombre}"?`)) return;
-  try{
-    showLoading(true);
-    const rowIndex = rowIndexMaps.Tipos.get(id);
-    await deleteRow(EXCEL.tables.Tipos, rowIndex);
-    tiposEscritos = tiposEscritos.filter(x=>x.id!==id);
-    await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
-    toast("Tipo eliminado","success");
-    populateTipoSelects(); 
-    displayEscritoTypes();
-  }catch(err){ 
-    console.error(err); 
-    toast("Error al eliminar tipo","error"); 
-  }finally{ 
-    showLoading(false); 
-  }
-}<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -1545,3 +1098,546 @@ function loadDashboard(){
     </div>`;
   }).join("") : '<div class="subtle text-center">Sin registros este mes</div>';
 }
+
+  /* ==== Historial ==== */
+function loadHistory(){
+  const myEmail = currentUser.username.toLowerCase();
+  const tipoMap = getTipoMap();
+  const myEntries = entries.filter(e=> e.email===myEmail);
+  renderHistoryTable(myEntries, tipoMap);
+}
+
+function renderHistoryTable(arr, tipoMap){
+  if (!Array.isArray(arr)) return;
+  const tbody = document.getElementById('historyTableBody');
+  if (!arr.length){ 
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center subtle">No hay entradas</td></tr>`; 
+    return; 
+  }
+  const sorted = [...arr].sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  tbody.innerHTML = sorted.map(e=>{
+    const tipo = tipoMap.get(e.tipoId);
+    return `<tr>
+      <td>${esc(e.fecha)}</td>
+      <td>${esc(e.expediente)}</td>
+      <td>${esc(tipo?.nombre || e.tipoId)}</td>
+      <td><span class="badge bg-primary">${(e.puntos || tipo?.puntuacion || 0)}</span></td>
+      <td>${e.comentario ? esc(e.comentario) : '-'}</td>
+      <td>
+        <button class="btn btn-sm btn-primary me-1" onclick="editEntry('${e.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="deleteEntry('${e.id}')"><i class="fa-solid fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function applyFilters(){
+  const myEmail = currentUser.username.toLowerCase();
+  const tipoMap = getTipoMap();
+  const df = document.getElementById('filterDateFrom').value;
+  const dt = document.getElementById('filterDateTo').value;
+  const typeId = document.getElementById('filterType').value;
+  let filtered = entries.filter(e=> e.email===myEmail);
+  if (df) filtered = filtered.filter(e=> e.fecha >= df);
+  if (dt) filtered = filtered.filter(e=> e.fecha <= dt);
+  if (typeId) filtered = filtered.filter(e=> e.tipoId === typeId);
+  renderHistoryTable(filtered, tipoMap);
+}
+
+/* ==== Registro / Editar / Eliminar ==== */
+function isExpedienteDuplicateForUserMonth(email, yyyyMM, expediente, ignoreEntryId=null){
+  return entries.some(e =>
+    e.email===email.toLowerCase() &&
+    e.fecha.startsWith(yyyyMM) &&
+    e.expediente===expediente &&
+    e.id!==ignoreEntryId
+  );
+}
+
+async function handleRegister(e){
+  e.preventDefault();
+  const fecha = document.getElementById('fecha').value;
+  const expediente = document.getElementById('expediente').value.trim();
+  const tipoId = document.getElementById('tipoEscrito').value;
+  const comentario = document.getElementById('comentario').value.trim();
+
+  const myEmail = currentUser.username.toLowerCase();
+  const yyyyMM = fecha.slice(0,7);
+
+  if (!fecha || !expediente || !tipoId){ 
+    toast("Completa los campos obligatorios","warning"); 
+    return; 
+  }
+
+  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente)){
+    document.getElementById('expedienteError').textContent = 'Este expediente ya existe este mes para ti.';
+    return;
+  } else {
+    document.getElementById('expedienteError').textContent = '';
+  }
+
+  const tipo = tiposEscritos.find(t=>t.id===tipoId);
+  if (!tipo){ 
+    toast("Tipo inválido","error"); 
+    return; 
+  }
+
+  const entry = {
+    id: Date.now().toString(),
+    usuario: currentUserData?.nombre || currentUser.name || myEmail,
+    email: myEmail,
+    fecha, expediente, tipoId,
+    puntos: tipo.puntuacion,
+    comentario
+  };
+
+  try{
+    showLoading(true);
+    await addRow(EXCEL.tables.Entradas, [
+      entry.id, entry.usuario, entry.email, entry.fecha, 
+      entry.expediente, entry.tipoId, entry.puntos, entry.comentario
+    ]);
+    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
+    entries.push(entry);
+
+    toast("Entrada registrada","success");
+    document.getElementById('registerForm').reset();
+    document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('puntosPreview').textContent = '-';
+    loadDashboard();
+  }catch(err){
+    console.error(err); 
+    toast("Error al guardar","error");
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+window.editEntry = function(id){
+  const e = entries.find(x=>x.id===id); 
+  if (!e) return;
+  const myEmail = currentUser.username.toLowerCase();
+  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  document.getElementById('editId').value = e.id;
+  document.getElementById('editFecha').value = e.fecha;
+  document.getElementById('editExpediente').value = e.expediente;
+  document.getElementById('editTipoEscrito').value = e.tipoId;
+  document.getElementById('editComentario').value = e.comentario || '';
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+async function saveEdit(){
+  const id = document.getElementById('editId').value;
+  const fecha = document.getElementById('editFecha').value;
+  const expediente = document.getElementById('editExpediente').value.trim();
+  const tipoId = document.getElementById('editTipoEscrito').value;
+  const comentario = document.getElementById('editComentario').value.trim();
+
+  const idx = entries.findIndex(e=>e.id===id); 
+  if (idx<0) return;
+  const myEmail = entries[idx].email;
+  const yyyyMM = fecha.slice(0,7);
+
+  if (isExpedienteDuplicateForUserMonth(myEmail, yyyyMM, expediente, id)){
+    toast("Expediente duplicado para ese mes","warning"); 
+    return;
+  }
+  const tipo = tiposEscritos.find(t=>t.id===tipoId); 
+  if (!tipo){ 
+    toast("Tipo inválido","error"); 
+    return; 
+  }
+
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Entradas.get(id);
+    const rowValues = [
+      id, entries[idx].usuario, myEmail, fecha, 
+      expediente, tipoId, tipo.puntuacion, comentario
+    ];
+    await replaceRow(EXCEL.tables.Entradas, rowIndex, rowValues);
+    entries[idx] = { 
+      ...entries[idx], 
+      fecha, expediente, tipoId, 
+      puntos: tipo.puntuacion, comentario 
+    };
+    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+    toast("Entrada actualizada","success");
+    if (document.getElementById('historySection').style.display!=="none") {
+      loadHistory(); 
+    } else {
+      loadDashboard();
+    }
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al actualizar","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+window.deleteEntry = async function(id){
+  const e = entries.find(x=>x.id===id); 
+  if (!e) return;
+  const myEmail = currentUser.username.toLowerCase();
+  if (e.email!==myEmail && currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  if (!confirm("¿Eliminar entrada?")) return;
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Entradas.get(id);
+    await deleteRow(EXCEL.tables.Entradas, rowIndex);
+    entries = entries.filter(x=>x.id!==id);
+    await refreshRowIndex(EXCEL.tables.Entradas, rowIndexMaps.Entradas);
+    toast("Entrada eliminada","success");
+    if (document.getElementById('historySection').style.display!=="none") {
+      loadHistory(); 
+    } else {
+      loadDashboard();
+    }
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al eliminar","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+async function refreshRowIndex(tableName, map){
+  map.clear();
+  const rows = await getTableRows(tableName);
+  rows.forEach(r=>{
+    const id = String(r.values[0][0]||"");
+    if (id) map.set(id, r.index);
+  });
+}
+
+/* ==== Supervisor ==== */
+function loadSupervisorDashboard(){
+  const yyyyMM = document.getElementById('supervisorMonth').value;
+  const selectedEmail = document.getElementById('supervisorUser').value;
+  const tipoMap = getTipoMap();
+
+  const statsMap = new Map();
+  users.forEach(u=> statsMap.set(u.email, { 
+    nombre:u.nombre, email:u.email, rol:u.rol, sede:u.sede, 
+    puntos:0, entradas:0, dias:0, porcentaje:0 
+  }));
+
+  const monthEntries = entries.filter(e=> 
+    e.fecha.startsWith(yyyyMM) && (!selectedEmail || e.email===selectedEmail)
+  );
+  monthEntries.forEach(e=>{
+    const st = statsMap.get(e.email);
+    if (st){ 
+      st.puntos += (e.puntos || tipoMap.get(e.tipoId)?.puntuacion || 0); 
+      st.entradas += 1; 
+    }
+  });
+
+  statsMap.forEach((st, email)=>{
+    if (selectedEmail && email!==selectedEmail) return;
+    const user = getUserByEmail(email);
+    const dias = getWorkingDaysYYYYMM(yyyyMM, user?.sede, user?.vacaciones).length;
+    st.dias = dias;
+    const required = dias * configuracion.puntosPorDia;
+    st.porcentaje = required>0 ? (st.puntos/required*100) : 0;
+  });
+
+  const stats = [...statsMap.values()]
+    .filter(s=>!selectedEmail || s.email===selectedEmail)
+    .sort((a,b)=> b.puntos - a.puntos);
+  renderRanking(stats);
+  renderUsersManagement();
+}
+
+function renderRanking(stats){
+  const container = document.getElementById('rankingTable');
+  if (!stats.length){ 
+    container.innerHTML = '<div class="subtle text-center">Sin datos</div>'; 
+    return; 
+  }
+  let html = `<div class="table-responsive"><table class="table align-middle table-hover">
+    <thead><tr><th>Pos.</th><th>Usuario</th><th>Puntos</th><th>Entradas</th><th>% Meta</th><th>Bono</th></tr></thead><tbody>`;
+  stats.forEach((s,i)=>{
+    const pos=i+1;
+    const medal = pos===1?'<i class="fa-solid fa-trophy text-warning rank-medal"></i>': 
+                  (pos<=3?'<i class="fa-solid fa-medal text-secondary rank-medal"></i>':'');
+    const bonus = s.porcentaje>=100 ? configuracion.bonoMensual : 0;
+    html += `<tr>
+      <td>${medal} ${pos}</td>
+      <td>${esc(s.nombre)} ${s.rol==='supervisor'?'<span class="supervisor-badge">SUP</span>':''}</td>
+      <td><span class="badge bg-primary">${s.puntos.toFixed(2)}</span></td>
+      <td>${s.entradas}</td>
+      <td><div class="progress" style="width:120px">
+        <div class="progress-bar ${s.porcentaje>=100?'bg-success':'bg-warning'}" 
+             style="width:${Math.min(s.porcentaje,100)}%">${s.porcentaje.toFixed(0)}%</div>
+      </div></td>
+      <td>${fmtEUR.format(bonus)}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+  container.innerHTML = html;
+}
+
+function renderUsersManagement(){
+  const tbody = document.getElementById('usersManagementTable');
+  tbody.innerHTML = users.map(u=>
+    `<tr>
+      <td>${esc(u.nombre)}</td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.sede||'-')}</td>
+      <td><span class="badge ${u.rol==='supervisor'?'bg-warning':'bg-secondary'}">${u.rol}</span></td>
+      <td>${u.vacaciones ? u.vacaciones.split(',').filter(Boolean).length : 0} días</td>
+      <td><button class="btn btn-sm btn-primary" onclick="editUser('${u.id}')">
+        <i class="fa-solid fa-pen"></i> Editar</button></td>
+    </tr>`
+  ).join('');
+}
+
+window.editUser = function(userId){
+  if (currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  const u = users.find(x=>x.id===userId); 
+  if (!u) return;
+  document.getElementById('userId').value = u.id;
+  document.getElementById('userNombre').value = u.nombre;
+  document.getElementById('userEmail').value = u.email;
+  document.getElementById('userRol').value = u.rol;
+  document.getElementById('userSede').value = u.sede || '';
+  document.getElementById('userVacaciones').value = u.vacaciones || '';
+  new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+async function saveUserData(){
+  const id = document.getElementById('userId').value;
+  const uIdx = users.findIndex(u=>u.id===id); 
+  if (uIdx<0) return;
+  const rol = document.getElementById('userRol').value;
+  const sede = document.getElementById('userSede').value.trim();
+  const vacaciones = document.getElementById('userVacaciones').value.trim();
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Usuarios.get(id);
+    const u = { ...users[uIdx], rol, sede, vacaciones };
+    await replaceRow(EXCEL.tables.Usuarios, rowIndex, [
+      u.id, u.nombre, u.email, u.rol, u.sede, u.vacaciones
+    ]);
+    users[uIdx] = u;
+    bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+    toast("Usuario actualizado","success");
+    loadSupervisorDashboard();
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al actualizar usuario","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+/* ==== Tipos de escritos ==== */
+function displayEscritoTypes(){
+  const tbody = document.getElementById('escritosTypesTable');
+  tbody.innerHTML = tiposEscritos.map(t=>{
+    const inUse = entries.some(e=>e.tipoId===t.id);
+    return `<tr>
+      <td>${esc(t.id)}</td>
+      <td>${esc(t.nombre)}</td>
+      <td>${t.puntuacion}</td>
+      <td><span class="badge ${t.activo?'bg-success':'bg-danger'}">${t.activo?'Activo':'Inactivo'}</span></td>
+      <td>
+        <button class="btn btn-sm btn-primary me-1" onclick="editEscritoType('${t.id}')">
+          <i class="fa-solid fa-pen"></i></button>
+        ${!inUse ? `<button class="btn btn-sm btn-danger" onclick="deleteEscritoType('${t.id}')">
+          <i class="fa-solid fa-trash"></i></button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function showEscritoModal(id=null){
+  if (currentUserData?.rol!=="supervisor"){ 
+    toast("Sin permisos","error"); 
+    return; 
+  }
+  const title = document.getElementById('editEscritoTitle');
+  if (id){
+    const t = tiposEscritos.find(x=>x.id===id); 
+    if (!t) return;
+    title.textContent = 'Editar tipo de escrito';
+    document.getElementById('escritoId').value = t.id;
+    document.getElementById('escritoNombre').value = t.nombre;
+    document.getElementById('escritoPuntuacion').value = t.puntuacion;
+    document.getElementById('escritoActivo').checked = t.activo;
+  } else {
+    title.textContent = 'Nuevo tipo de escrito';
+    document.getElementById('escritoId').value = '';
+    document.getElementById('escritoNombre').value = '';
+    document.getElementById('escritoPuntuacion').value = '';
+    document.getElementById('escritoActivo').checked = true;
+  }
+  new bootstrap.Modal(document.getElementById('editEscritoModal')).show();
+}
+
+window.editEscritoType = function(id){ 
+  showEscritoModal(id); 
+}
+
+async function saveEscritoType(){
+  const id = document.getElementById('escritoId').value || Date.now().toString();
+  const nombre = document.getElementById('escritoNombre').value.trim();
+  const puntuacion = parseFloat(document.getElementById('escritoPuntuacion').value);
+  const activo = document.getElementById('escritoActivo').checked;
+  if (!nombre || Number.isNaN(puntuacion)){ 
+    toast("Completa los campos","warning"); 
+    return; 
+  }
+  try{
+    showLoading(true);
+    const idx = tiposEscritos.findIndex(t=>t.id===id);
+    if (idx>=0){
+      const rowIndex = rowIndexMaps.Tipos.get(id);
+      await replaceRow(EXCEL.tables.Tipos, rowIndex, [id, nombre, puntuacion, activo]);
+      tiposEscritos[idx] = { id, nombre, puntuacion, activo };
+    } else {
+      await addRow(EXCEL.tables.Tipos, [id, nombre, puntuacion, activo]);
+      await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
+      tiposEscritos.push({ id, nombre, puntuacion, activo });
+    }
+    bootstrap.Modal.getInstance(document.getElementById('editEscritoModal')).hide();
+    toast("Tipo guardado","success");
+    populateTipoSelects();
+    displayEscritoTypes();
+  }catch(err){ 
+    console.error(err); 
+    toast("Error guardando tipo","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+
+window.deleteEscritoType = async function(id){
+  const t = tiposEscritos.find(x=>x.id===id); 
+  if (!t) return;
+  if (entries.some(e=>e.tipoId===id)){ 
+    toast("Está en uso, desactívalo en su lugar","warning"); 
+    return; 
+  }
+  if (!confirm(`¿Eliminar "${t.nombre}"?`)) return;
+  try{
+    showLoading(true);
+    const rowIndex = rowIndexMaps.Tipos.get(id);
+    await deleteRow(EXCEL.tables.Tipos, rowIndex);
+    tiposEscritos = tiposEscritos.filter(x=>x.id!==id);
+    await refreshRowIndex(EXCEL.tables.Tipos, rowIndexMaps.Tipos);
+    toast("Tipo eliminado","success");
+    populateTipoSelects(); 
+    displayEscritoTypes();
+  }catch(err){ 
+    console.error(err); 
+    toast("Error al eliminar tipo","error"); 
+  }finally{ 
+    showLoading(false); 
+  }
+}
+/* ==============================
+   BOOTSTRAP APP (inicio)
+============================== */
+
+// Muestra la app tras autenticación y carga datos
+async function showMainApp(){
+  // 1) UI: mostrar app, ocultar login
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+
+  // 2) Usuario actual (por si no está en tabla Usuarios aún)
+  const myEmail = (currentUser?.username || '').toLowerCase();
+  currentUserData = getUserByEmail(myEmail) || {
+    id: currentUser?.localAccountId || Date.now().toString(),
+    nombre: currentUser?.name || myEmail,
+    email: myEmail,
+    rol: 'usuario',
+    sede: '',
+    vacaciones: ''
+  };
+
+  // 3) Defaults de fecha/mes
+  const today = new Date();
+  const yyyyMM = today.toISOString().slice(0,7);
+  document.getElementById('monthSelector').value = yyyyMM;
+
+  // 4) Iniciar gráficos y cargar datos
+  initCharts();
+  showLoading(true);
+  try{
+    await loadAllData();
+    populateTipoSelects();
+    populateUsersForSupervisor();
+    updatePointsPreview();
+    loadDashboard();
+    loadHistory();
+    displayEscritoTypes();
+
+    // Mostrar pestañas de supervisor si aplica
+    const isSup = (currentUserData?.rol === 'supervisor');
+    document.querySelectorAll('.supervisor-only').forEach(el => el.style.display = isSup ? '' : 'none');
+    document.getElementById('userRoleBadge').textContent = isSup ? 'SUP' : '';
+  } catch(err){
+    console.error(err);
+    toast('Error cargando datos iniciales','error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// Navegación simple entre secciones
+function showSection(id){
+  document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
+  document.getElementById(id).style.display = '';
+  document.querySelectorAll('.pill-tabs .nav-link').forEach(a => a.classList.remove('active'));
+  document.querySelectorAll(`.pill-tabs .nav-link[data-section="${id.replace('Section','')}"]`).forEach(a=>a.classList.add('active'));
+}
+
+// Listeners y arranque MSAL
+document.addEventListener('DOMContentLoaded', () => {
+  // Botones login/logout
+  document.getElementById('loginButton')?.addEventListener('click', (e) => { e.preventDefault(); login(); });
+  document.getElementById('logoutButton')?.addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+  // Tabs
+  document.querySelectorAll('.pill-tabs .nav-link').forEach(a=>{
+    a.addEventListener('click', (e)=>{
+      e.preventDefault();
+      const sec = a.getAttribute('data-section');
+      showSection(`${sec}Section`);
+      if (sec==='dashboard') loadDashboard();
+      if (sec==='history') loadHistory();
+      if (sec==='supervisor') loadSupervisorDashboard();
+      if (sec==='config') { displayEscritoTypes(); }
+    });
+  });
+
+  // Filtros / selects / formularios
+  document.getElementById('applyFilters')?.addEventListener('click', applyFilters);
+  document.getElementById('tipoEscrito')?.addEventListener('change', updatePointsPreview);
+  document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
+  document.getElementById('saveEdit')?.addEventListener('click', saveEdit);
+  document.getElementById('saveEscritoType')?.addEventListener('click', saveEscritoType);
+  document.getElementById('saveUser')?.addEventListener('click', saveUserData);
+  document.getElementById('supervisorFilter')?.addEventListener('click', loadSupervisorDashboard);
+  document.getElementById('addEscritoType')?.addEventListener('click', ()=> showEscritoModal(null));
+
+  // Cambios de mes
+  document.getElementById('monthSelector')?.addEventListener('change', loadDashboard);
+  document.getElementById('supervisorMonth')?.addEventListener('change', loadSupervisorDashboard);
+
+  // Arrancar MSAL
+  initMSAL();
+});
