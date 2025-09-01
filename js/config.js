@@ -22,7 +22,7 @@ export const loginRequest = {
 };
 
 export const EXCEL = {
-  fileId: "01WYAE7MQH7SY7HM2BD5GJO5HUP3PRFJDN",
+  fileId: "93FCFB2D-5705-4CB5-9DB3-243BE744B941",
   tables: {
     Usuarios: "Usuarios",
     Tipos: "TiposEscritos",
@@ -32,3 +32,4 @@ export const EXCEL = {
     Calendario: "Calendario"
   }
 };
+
