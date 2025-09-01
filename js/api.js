@@ -1,5 +1,5 @@
 /**
- * Capa de acceso a Microsoft Graph / Excel.
+ * Capa de acceso a Microsoft Graph / Excel en SharePoint.
  * @module api
  */
 
@@ -39,7 +39,7 @@ export async function graphBatch(requests) {
 }
 
 /** Helpers tablas */
-const base = (fileId) => `/me/drive/items/${fileId}/workbook/tables`;
+const base = (fileId) => `/sites/${EXCEL.siteId}/drive/items/${fileId}/workbook/tables`;
 
 export async function getTableRows(tableName) {
   const url = `https://graph.microsoft.com/v1.0${base(EXCEL.fileId)}('${tableName}')/rows`;
@@ -78,19 +78,19 @@ export async function refreshRowIndex(tableName, map) {
  * @returns {Promise<Object>}
  */
 export async function loadAllData() {
-  const base = `/me/drive/items/${EXCEL.fileId}/workbook/tables`;
-  
+  const basePath = `/sites/${EXCEL.siteId}/drive/items/${EXCEL.fileId}/workbook/tables`;
+
   const requests = [
-    { id: "1", method: "GET", url: `${base}('${EXCEL.tables.Usuarios}')/rows` },
-    { id: "2", method: "GET", url: `${base}('${EXCEL.tables.Tipos}')/rows` },
-    { id: "3", method: "GET", url: `${base}('${EXCEL.tables.Config}')/rows` },
-    { id: "4", method: "GET", url: `${base}('${EXCEL.tables.Entradas}')/rows` },
-    { id: "5", method: "GET", url: `${base}('${EXCEL.tables.Historial}')/rows` },
-    { id: "6", method: "GET", url: `${base}('${EXCEL.tables.Calendario}')/rows` }
+    { id: "1", method: "GET", url: `${basePath}('${EXCEL.tables.Usuarios}')/rows` },
+    { id: "2", method: "GET", url: `${basePath}('${EXCEL.tables.Tipos}')/rows` },
+    { id: "3", method: "GET", url: `${basePath}('${EXCEL.tables.Config}')/rows` },
+    { id: "4", method: "GET", url: `${basePath}('${EXCEL.tables.Entradas}')/rows` },
+    { id: "5", method: "GET", url: `${basePath}('${EXCEL.tables.Historial}')/rows` },
+    { id: "6", method: "GET", url: `${basePath}('${EXCEL.tables.Calendario}')/rows` }
   ];
 
   const responses = await graphBatch(requests);
-  
+
   const result = {
     users: [],
     tiposEscritos: [],
