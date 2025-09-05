@@ -23,7 +23,7 @@ export const loginRequest = {
 
 export const EXCEL = {
   fileId: "01A3ZROORN7P6JGBKXWVGJ3MZEHPTUJOKB",
-  siteId: "daf8536b-3da5-4357-9940-3d8c582cce05",
+  siteId: "01WYAE7MQH7SY7HM2BD5GJO5HUP3PRFJDN",
   tables: {
     Usuarios: "Usuarios",
     Tipos: "TiposEscritos",
@@ -33,5 +33,6 @@ export const EXCEL = {
     Calendario: "Calendario"
   }
 };
+
 
 
